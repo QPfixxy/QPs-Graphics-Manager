@@ -1,13 +1,25 @@
 # Graphics Settings Manager
 
-This project is a simple GUI application designed for managing graphics settings for video games on a handheld console, with support for an external GPU (eGPU) when connected.
+This project is a simple GUI application designed for managing graphics settings for video games on handheld PC consoles (ROG ALLY, ALLY X, etc) and EGPU systems. An simple and effective way to backup graphics configurations on a per setting basis, and quickly redeploy them between modes. 
+
+A primary example being, switching between 4k ultra gaming on an EGPU, and 720p/1080p gaming on a handheld. Simply deploy the corrisponding configuration with a button click, and done. 
+
+The system allows for multiple backups of for each game, so that you can have as many configurations as needed for your various setups.
+
 
 ## Features
 
-- User-friendly interface for adjusting graphics settings.
-- Support for various settings such as resolution, frame rate, and more.
-- Ability to save and load settings from a configuration file.
-- Dynamic updates to settings based on user interactions.
+- Simple UI interface, easily to navigated. 
+- Support for multiple graphics configurations per game. 
+- Ability to save and load configuration files on the fly. 
+- Dynamic Import of games from Steam, GOG, and Epic Launchers.
+
+## Planned Features
+
+- EGPU detection and automatic profile deployment.
+- Improved UI navigation features
+- Automatic graphics configuration pathing (currently manual pathing is required).
+
 
 ## Project Structure
 
