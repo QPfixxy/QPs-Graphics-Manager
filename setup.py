@@ -1,24 +1,34 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='graphics-settings-manager',
+    name='QPs-settings-manager',
     version='0.1',
     packages=find_packages(where='src'),
     package_dir={'': 'src'},
     install_requires=[
-        # List dependencies here, e.g.:
-        # 'PyQt5',
-        # 'Pillow',
+        'PyQt5',
+        'Pillow',
+        'requests', 
+        'sqlalchemy',  
+        'pymysql', 
+        'psycopg2', 
+        'pytest',  
+        'coverage',  
+        'sphinx',  
+        'sphinx_rtd_theme', 
+        'wheel', 
+        'setuptools',
+        'pyinstaller',  
     ],
     entry_points={
         'console_scripts': [
-            'graphics-settings-manager=main:main',  # Adjust according to your main function
+            'graphics-settings-manager=main:main', 
         ],
     },
-    author='Your Name',
-    author_email='your.email@example.com',
-    description='A simple GUI program for managing graphics settings for video games.',
+    author='Dakota Naylor',
+    author_email='dakota.naylor@protonmail.com',
+    description='A lightweight GPU settings manager designed for use with handheld devices.',
     license='MIT',
     keywords='graphics settings manager',
-    url='https://github.com/yourusername/graphics-settings-manager',  # Update with your repository URL
+    url='https://github.com/QPfixxy/QPs-Graphics-Manager',  
 )
