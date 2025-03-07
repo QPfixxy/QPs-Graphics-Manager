@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QMainWindow, QLabel, QVBoxLayout, QWidget, QPushButton, QComboBox, QApplication, QFileDialog, QLineEdit, QListWidget, QHBoxLayout, QMessageBox, QInputDialog, QGridLayout, QScrollArea, QDialog, QDialogButtonBox, QFormLayout
+from PyQt5.QtWidgets import QMainWindow, QLabel, QVBoxLayout, QWidget, QPushButton, QComboBox, QApplication, QFileDialog, QLineEdit, QListWidget, QHBoxLayout, QMessageBox, QInputDialog, QGridLayout, QScrollArea, QDialog, QDialogButtonBox, QFormLayout, QMenuBar, QAction, QToolButton, QMenu
 from PyQt5.QtGui import QPixmap, QIcon, QTransform
 from PyQt5.QtCore import Qt
 import sys
@@ -17,26 +17,56 @@ class MainWindow(QMainWindow):
         self.selected_game = None
         self.selected_label = None
         self.init_ui()
+        self.apply_stylesheet()
 
     def init_ui(self):
         layout = QVBoxLayout()
 
-        self.add_game_button = QPushButton("Add Game")
-        self.add_game_button.clicked.connect(self.open_add_game_window)
+        # Create a menu bar
+        menu_bar = QMenuBar(self)
+        self.setMenuBar(menu_bar)
 
-        self.import_games_button = QPushButton("Import Games")
-        self.import_games_button.clicked.connect(self.import_games)
+        # Create a "File" menu
+        file_menu = menu_bar.addMenu("File")
 
-        self.delete_game_button = QPushButton("Delete Game")
+        # Add "Add Game" and "Import Games" actions to the "File" menu
+        add_game_action = QAction(QIcon("icons/add.png"), "Add Game", self)
+        add_game_action.triggered.connect(self.open_add_game_window)
+        file_menu.addAction(add_game_action)
+
+        import_games_action = QAction(QIcon("icons/import.png"), "Import Games", self)
+        import_games_action.triggered.connect(self.import_games)
+        file_menu.addAction(import_games_action)
+
+        # Create a horizontal layout for the top buttons
+        top_buttons_layout = QHBoxLayout()
+
+        self.delete_game_button = QPushButton()
+        self.delete_game_button.setIcon(QIcon("icons/delete.png"))
+        self.delete_game_button.setFixedSize(30, 30)
         self.delete_game_button.clicked.connect(self.delete_game)
         self.delete_game_button.setEnabled(False)
+        top_buttons_layout.addWidget(self.delete_game_button)
+
+        top_buttons_layout.addStretch()
+
+        # Create a dropdown menu for "Add Game" and "Import Games"
+        self.add_import_button = QToolButton()
+        self.add_import_button.setText("Options")
+        self.add_import_button.setPopupMode(QToolButton.InstantPopup)
+        self.add_import_button.setFixedSize(100, 30)
+
+        add_import_menu = QMenu(self)
+        add_import_menu.addAction(add_game_action)
+        add_import_menu.addAction(import_games_action)
+        self.add_import_button.setMenu(add_import_menu)
+        top_buttons_layout.addWidget(self.add_import_button)
+
+        layout.addLayout(top_buttons_layout)
 
         self.posters_layout = QGridLayout()
         self.load_posters()
 
-        layout.addWidget(self.add_game_button)
-        layout.addWidget(self.import_games_button)
-        layout.addWidget(self.delete_game_button)
         layout.addLayout(self.posters_layout)
 
         # Create a horizontal layout for the switch buttons
@@ -47,6 +77,7 @@ class MainWindow(QMainWindow):
         switch_buttons_layout.addWidget(self.profile_dropdown)
 
         self.switch_profile_button = QPushButton("Switch Profile")
+        self.switch_profile_button.setIcon(QIcon("icons/switch.png"))
         self.switch_profile_button.clicked.connect(self.switch_profile)
         self.switch_profile_button.setEnabled(False)
         switch_buttons_layout.addWidget(self.switch_profile_button)
@@ -62,6 +93,37 @@ class MainWindow(QMainWindow):
         scroll_area.setWidgetResizable(True)
         self.setCentralWidget(scroll_area)
 
+    def apply_stylesheet(self):
+        stylesheet = """
+        QMainWindow {
+            background-color: #2e2e2e;
+        }
+        QPushButton {
+            background-color: #4a4a4a;
+            color: white;
+            border: 1px solid #5a5a5a;
+            padding: 5px;
+            border-radius: 5px;
+        }
+        QPushButton:hover {
+            background-color: #5a5a5a;
+        }
+        QComboBox {
+            background-color: #4a4a4a;
+            color: white;
+            border: 1px solid #5a5a5a;
+            padding: 5px;
+            border-radius: 5px;
+        }
+        QLabel {
+            color: white;
+        }
+        QLabel:hover {
+            border: 2px solid #5a5a5a;
+        }
+        """
+        self.setStyleSheet(stylesheet)
+
     def load_posters(self):
         # Clear the existing posters
         for i in reversed(range(self.posters_layout.count())):
@@ -75,11 +137,11 @@ class MainWindow(QMainWindow):
         for game_name in games:
             poster_path = os.path.join("posters", f"{game_name}.jpg")
             if not os.path.exists(poster_path):
-                poster_path = "default_poster.jpg"
+                poster_path = "icons/noart.png"
             poster_label = QLabel()
             pixmap = QPixmap(poster_path)
             if pixmap.isNull():
-                pixmap = QPixmap("default_poster.jpg")
+                pixmap = QPixmap("icons/noart.png")
             poster_label.setPixmap(pixmap.scaled(100, 150))
             poster_label.setFixedSize(100, 150)
             poster_label.setAlignment(Qt.AlignCenter)
@@ -94,7 +156,7 @@ class MainWindow(QMainWindow):
 
             poster_container = QWidget()
             poster_container.setLayout(poster_layout)
-            poster_container.setFixedSize(100, 170)  # Including space for the game name
+            poster_container.setFixedSize(110, 180)  # Including space for the game name and larger click border
 
             self.posters_layout.addWidget(poster_container, row, col)
             col += 1
@@ -257,10 +319,10 @@ class GameWindow(QMainWindow):
     def load_poster(self):
         poster_path = os.path.join("posters", f"{self.game_name}.jpg")
         if not os.path.exists(poster_path):
-            poster_path = "default_poster.jpg"
+            poster_path = "icons/noart.png"
         pixmap = QPixmap(poster_path)
         if pixmap.isNull():
-            pixmap = QPixmap("default_poster.jpg")
+            pixmap = QPixmap("icons/noart.png")
         self.poster_label.setPixmap(pixmap.scaled(100, 150))
 
     def upload_poster(self):
