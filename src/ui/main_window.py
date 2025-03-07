@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QMainWindow, QLabel, QVBoxLayout, QWidget, QPushButton, QComboBox, QApplication, QFileDialog, QLineEdit, QListWidget, QHBoxLayout, QMessageBox, QInputDialog, QGridLayout, QScrollArea, QDialog, QDialogButtonBox, QFormLayout, QMenuBar, QAction, QToolButton, QMenu
+from PyQt5.QtWidgets import QMainWindow, QLabel, QVBoxLayout, QWidget, QPushButton, QComboBox, QApplication, QFileDialog, QLineEdit, QListWidget, QHBoxLayout, QMessageBox, QInputDialog, QGridLayout, QScrollArea, QDialog, QDialogButtonBox, QFormLayout, QMenuBar, QAction, QToolButton, QMenu, QSpacerItem, QSizePolicy
 from PyQt5.QtGui import QPixmap, QIcon, QTransform
 from PyQt5.QtCore import Qt
 import sys
@@ -10,7 +10,7 @@ from utils.game_importer import import_games, get_default_paths
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Graphics Settings Manager")
+        self.setWindowTitle("QP's Graphics Manager")
         self.setGeometry(100, 100, 800, 600)
         
         self.settings_controller = SettingsController(config_dir="configs")
@@ -38,6 +38,16 @@ class MainWindow(QMainWindow):
         import_games_action.triggered.connect(self.import_games)
         file_menu.addAction(import_games_action)
 
+        # Create a horizontal layout for the top section
+        top_layout = QHBoxLayout()
+
+        # Add logo to the top center
+        logo_label = QLabel()
+        logo_pixmap = QPixmap("icons/QPGM.png")
+        logo_label.setPixmap(logo_pixmap.scaled(200, 100, Qt.KeepAspectRatio))
+        logo_label.setAlignment(Qt.AlignCenter)
+        top_layout.addWidget(logo_label, alignment=Qt.AlignCenter)
+
         # Create a horizontal layout for the top buttons
         top_buttons_layout = QHBoxLayout()
 
@@ -52,9 +62,10 @@ class MainWindow(QMainWindow):
 
         # Create a dropdown menu for "Add Game" and "Import Games"
         self.add_import_button = QToolButton()
-        self.add_import_button.setText("Options")
+        self.add_import_button.setText("New Game")
         self.add_import_button.setPopupMode(QToolButton.InstantPopup)
         self.add_import_button.setFixedSize(100, 30)
+        self.add_import_button.setStyleSheet("QToolButton::menu-indicator { subcontrol-position: center right; }")
 
         add_import_menu = QMenu(self)
         add_import_menu.addAction(add_game_action)
@@ -62,7 +73,8 @@ class MainWindow(QMainWindow):
         self.add_import_button.setMenu(add_import_menu)
         top_buttons_layout.addWidget(self.add_import_button)
 
-        layout.addLayout(top_buttons_layout)
+        top_layout.addLayout(top_buttons_layout)
+        layout.addLayout(top_layout)
 
         self.posters_layout = QGridLayout()
         self.load_posters()
@@ -82,6 +94,7 @@ class MainWindow(QMainWindow):
         self.switch_profile_button.setEnabled(False)
         switch_buttons_layout.addWidget(self.switch_profile_button)
 
+        layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
         layout.addLayout(switch_buttons_layout)
 
         container = QWidget()
@@ -119,7 +132,42 @@ class MainWindow(QMainWindow):
             color: white;
         }
         QLabel:hover {
-            border: 2px solid #5a5a5a;
+            background-color: #5a5a5a;
+        }
+        QToolButton {
+            background-color: #4a4a4a;
+            color: white;
+            border: 1px solid #5a5a5a;
+            padding: 5px;
+            border-radius: 5px;
+        }
+        QToolButton:hover {
+            background-color: #5a5a5a;
+        }
+        QToolButton::menu-indicator {
+            subcontrol-position: center right;
+        }
+        QMenuBar {
+            background-color: #3a3a3a;
+            color: white;
+        }
+        QMenuBar::item {
+            background-color: #3a3a3a;
+            color: white;
+        }
+        QMenuBar::item:selected {
+            background-color: #5a5a5a;
+        }
+        QMenu {
+            background-color: #3a3a3a;
+            color: white;
+        }
+        QMenu::item {
+            background-color: #3a3a3a;
+            color: white;
+        }
+        QMenu::item:selected {
+            background-color: #5a5a5a;
         }
         """
         self.setStyleSheet(stylesheet)
@@ -137,12 +185,12 @@ class MainWindow(QMainWindow):
         for game_name in games:
             poster_path = os.path.join("posters", f"{game_name}.jpg")
             if not os.path.exists(poster_path):
-                poster_path = "icons/noart.png"
+                poster_path = self.get_executable_icon_path(game_name)
             poster_label = QLabel()
             pixmap = QPixmap(poster_path)
             if pixmap.isNull():
                 pixmap = QPixmap("icons/noart.png")
-            poster_label.setPixmap(pixmap.scaled(100, 150))
+            poster_label.setPixmap(pixmap.scaled(100, 150, Qt.KeepAspectRatio))
             poster_label.setFixedSize(100, 150)
             poster_label.setAlignment(Qt.AlignCenter)
             poster_label.mousePressEvent = lambda event, name=game_name, label=poster_label: self.select_game(name, label)
@@ -157,12 +205,32 @@ class MainWindow(QMainWindow):
             poster_container = QWidget()
             poster_container.setLayout(poster_layout)
             poster_container.setFixedSize(110, 180)  # Including space for the game name and larger click border
+            poster_container.setStyleSheet("""
+                QWidget:hover {
+                    background-color: #5a5a5a;
+                }
+                QLabel {
+                    border: none;
+                }
+            """)
 
             self.posters_layout.addWidget(poster_container, row, col)
             col += 1
             if col > 3:
                 col = 0
                 row += 1
+
+    def get_executable_icon_path(self, game_name):
+        # Assuming the executable is in the "executables" directory
+        executable_path = os.path.join("executables", f"{game_name}.exe")
+        if os.path.exists(executable_path):
+            icon = QIcon(executable_path)
+            if not icon.isNull():
+                icon_pixmap = icon.pixmap(100, 150)
+                icon_path = os.path.join("posters", f"{game_name}_icon.png")
+                icon_pixmap.save(icon_path)
+                return icon_path
+        return "icons/noart.png"
 
     def select_game(self, game_name, poster_label):
         if self.selected_game == game_name:
@@ -178,7 +246,7 @@ class MainWindow(QMainWindow):
             self.delete_game_button.setEnabled(True)
             self.profile_dropdown.setEnabled(True)
             self.switch_profile_button.setEnabled(True)
-            poster_label.setStyleSheet("border: 2px solid blue;")
+            poster_label.setStyleSheet("background-color: #5a5a5a;")
             self.load_profiles()
 
     def load_profiles(self):
@@ -323,7 +391,7 @@ class GameWindow(QMainWindow):
         pixmap = QPixmap(poster_path)
         if pixmap.isNull():
             pixmap = QPixmap("icons/noart.png")
-        self.poster_label.setPixmap(pixmap.scaled(100, 150))
+        self.poster_label.setPixmap(pixmap.scaled(100, 150, Qt.KeepAspectRatio))
 
     def upload_poster(self):
         options = QFileDialog.Options()
