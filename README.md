@@ -24,7 +24,7 @@ The system allows for multiple backups of for each game, so that you can have as
 ## Project Structure
 
 ```
-graphics-settings-manager
+QPs-settings-manager
 ├── src
 │   ├── main.py                # Entry point of the application
 │   ├── ui
