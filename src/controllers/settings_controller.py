@@ -70,3 +70,26 @@ class SettingsController:
         game_folders = [name for name in os.listdir(steam_common_path) if os.path.isdir(os.path.join(steam_common_path, name))]
         for game_name in game_folders:
             self.add_game(game_name, "")
+
+    def export_data(self, file_path):
+        data = {
+            "games": self.get_games(),
+            "configs": {}
+        }
+        for game, config_path in data["games"].items():
+            if config_path and os.path.exists(config_path):
+                with open(config_path, "r") as file:
+                    data["configs"][game] = file.read()
+            else:
+                data["configs"][game] = None
+        with open(file_path, "w") as file:
+            json.dump(data, file, indent=4)
+
+    def import_data(self, file_path):
+        with open(file_path, "r") as file:
+            data = json.load(file)
+        for game, config_path in data["games"].items():
+            self.add_game(game, config_path)
+            if data["configs"][game]:
+                with open(config_path, "w") as config_file:
+                    config_file.write(data["configs"][game])

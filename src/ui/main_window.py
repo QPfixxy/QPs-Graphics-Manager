@@ -52,6 +52,15 @@ class MainWindow(QMainWindow):
         import_games_action.triggered.connect(self.import_games)
         file_menu.addAction(import_games_action)
 
+        # Add "Export Data" and "Import Data" actions to the "File" menu
+        export_data_action = QAction(QIcon("icons/export.png"), "Export Data", self)
+        export_data_action.triggered.connect(self.export_data)
+        file_menu.addAction(export_data_action)
+
+        import_data_action = QAction(QIcon("icons/import.png"), "Import Data", self)
+        import_data_action.triggered.connect(self.import_data)
+        file_menu.addAction(import_data_action)
+
         # Create a horizontal layout for the top section
         top_layout = QHBoxLayout()
 
@@ -243,6 +252,21 @@ class MainWindow(QMainWindow):
             if directory_path:
                 import_games(self.settings_controller, directory_path)
                 self.load_posters()
+
+    def export_data(self):
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getSaveFileName(self, "Export Data", "", "JSON Files (*.json);;All Files (*)", options=options)
+        if file_path:
+            self.settings_controller.export_data(file_path)
+            QMessageBox.information(self, "Export Data", "Data exported successfully.")
+
+    def import_data(self):
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getOpenFileName(self, "Import Data", "", "JSON Files (*.json);;All Files (*)", options=options)
+        if file_path:
+            self.settings_controller.import_data(file_path)
+            self.load_posters()
+            QMessageBox.information(self, "Import Data", "Data imported successfully.")
 
 class ImportGamesDialog(QDialog):
     def __init__(self, parent=None):
