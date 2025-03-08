@@ -16,8 +16,22 @@ class MainWindow(QMainWindow):
         self.settings_controller = SettingsController(config_dir="configs")
         self.selected_game = None
         self.selected_label = None
+        
+        # Ensure the posters directory exists
+        self.ensure_posters_directory()
+        
         self.init_ui()
-        self.apply_stylesheet()
+        self.apply_stylesheet()  # Ensure the stylesheet is applied after initializing the UI
+
+    def ensure_posters_directory(self):
+        posters_dir = os.path.join(os.path.dirname(__file__), "..", "..", "posters")
+        if not os.path.exists(posters_dir):
+            os.makedirs(posters_dir)
+
+    def apply_stylesheet(self):
+        stylesheet_path = os.path.join(os.path.dirname(__file__), "style.qss")
+        with open(stylesheet_path, "r") as file:
+            self.setStyleSheet(file.read())
 
     def init_ui(self):
         layout = QVBoxLayout()
@@ -65,7 +79,6 @@ class MainWindow(QMainWindow):
         self.add_import_button.setText("New Game")
         self.add_import_button.setPopupMode(QToolButton.InstantPopup)
         self.add_import_button.setFixedSize(100, 30)
-        self.add_import_button.setStyleSheet("QToolButton::menu-indicator { subcontrol-position: center right; }")
 
         add_import_menu = QMenu(self)
         add_import_menu.addAction(add_game_action)
@@ -105,72 +118,6 @@ class MainWindow(QMainWindow):
         scroll_area.setWidget(container)
         scroll_area.setWidgetResizable(True)
         self.setCentralWidget(scroll_area)
-
-    def apply_stylesheet(self):
-        stylesheet = """
-        QMainWindow {
-            background-color: #2e2e2e;
-        }
-        QPushButton {
-            background-color: #4a4a4a;
-            color: white;
-            border: 1px solid #5a5a5a;
-            padding: 5px;
-            border-radius: 5px;
-        }
-        QPushButton:hover {
-            background-color: #5a5a5a;
-        }
-        QComboBox {
-            background-color: #4a4a4a;
-            color: white;
-            border: 1px solid #5a5a5a;
-            padding: 5px;
-            border-radius: 5px;
-        }
-        QLabel {
-            color: white;
-        }
-        QLabel:hover {
-            background-color: #5a5a5a;
-        }
-        QToolButton {
-            background-color: #4a4a4a;
-            color: white;
-            border: 1px solid #5a5a5a;
-            padding: 5px;
-            border-radius: 5px;
-        }
-        QToolButton:hover {
-            background-color: #5a5a5a;
-        }
-        QToolButton::menu-indicator {
-            subcontrol-position: center right;
-        }
-        QMenuBar {
-            background-color: #3a3a3a;
-            color: white;
-        }
-        QMenuBar::item {
-            background-color: #3a3a3a;
-            color: white;
-        }
-        QMenuBar::item:selected {
-            background-color: #5a5a5a;
-        }
-        QMenu {
-            background-color: #3a3a3a;
-            color: white;
-        }
-        QMenu::item {
-            background-color: #3a3a3a;
-            color: white;
-        }
-        QMenu::item:selected {
-            background-color: #5a5a5a;
-        }
-        """
-        self.setStyleSheet(stylesheet)
 
     def load_posters(self):
         # Clear the existing posters
@@ -325,6 +272,12 @@ class GameWindow(QMainWindow):
         self.setWindowTitle(game_name if game_name else "Add Game")
         self.setGeometry(150, 150, 400, 300)
         self.init_ui()
+        self.apply_stylesheet()  # Ensure the stylesheet is applied after initializing the UI
+
+    def apply_stylesheet(self):
+        stylesheet_path = os.path.join(os.path.dirname(__file__), "style.qss")
+        with open(stylesheet_path, "r") as file:
+            self.setStyleSheet(file.read())
 
     def init_ui(self):
         layout = QVBoxLayout()
@@ -473,6 +426,12 @@ class GameWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    
+    # Load and apply the QSS stylesheet
+    qss_path = os.path.join(os.path.dirname(__file__), "style.qss")
+    with open(qss_path, "r") as file:
+        app.setStyleSheet(file.read())
+    
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
