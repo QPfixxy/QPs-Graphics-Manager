@@ -39,11 +39,11 @@ The headless daemon matters for Bazzite and SteamOS-style Game Mode (gamescope),
 ## Phases
 
 ### Phase 0: Foundation
-- [ ] New project layout with `pyproject.toml` (PySide6, `platformdirs`, `psutil`)
-- [ ] User data stored in the OS's per-user folder via `platformdirs`, not the folder the app was launched from
-- [ ] Data model: games, setups, snapshots, settings
-- [ ] pytest test suite
-- [ ] GitHub Actions CI running on Windows and Ubuntu
+- [x] New project layout with `pyproject.toml` (PySide6, `platformdirs`, `psutil`)
+- [x] User data stored in the OS's per-user folder via `platformdirs`, not the folder the app was launched from
+- [x] Data model: games, setups, snapshots, settings
+- [x] pytest test suite
+- [x] GitHub Actions CI running on Windows and Ubuntu
 
 ### Phase 1: Manual switching on both OSes (MVP)
 - [ ] Steam game discovery from `libraryfolders.vdf` and `appmanifest_*.acf` (Windows, Linux, Flatpak Steam), including Proton prefixes

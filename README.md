@@ -1,67 +1,46 @@
-# Graphics Settings Manager
+# QP's Graphics Manager
 
-This project is a simple GUI application designed for managing graphics settings for video games on handheld PC consoles (ROG ALLY, ALLY X, etc) and EGPU systems. An simple and effective way to backup graphics configurations on a per setting basis, and quickly redeploy them between modes. 
+Keep a separate copy of each game's graphics settings for every hardware setup you play on, and swap between them in one click.
 
-A primary example being, switching between 4k ultra gaming on an EGPU, and 720p/1080p gaming on a handheld. Simply deploy the corrisponding configuration with a button click, and done. 
+It's built for handheld gaming PCs (ROG Ally, Legion Go, Steam Deck, ...) and laptops that are sometimes plugged into an external GPU. Run 4K ultra when docked to the eGPU and 720p low on the go, without changing settings in every game each time.
 
-The system allows for multiple backups of for each game, so that you can have as many configurations as needed for your various setups.
+> **Status: v2 rewrite in progress.** This branch is a ground-up rewrite for Windows and Linux (including Bazzite and Proton games). It doesn't have a GUI yet. The original v0.1 app is on the [`legacy`](https://github.com/QPfixxy/QPs-Graphics-Manager/tree/legacy) branch and the [`v0.1`](https://github.com/QPfixxy/QPs-Graphics-Manager/releases/tag/v0.1) tag. See [ROADMAP.md](ROADMAP.md) for the plan.
 
+## How it will work
 
-## Features
+1. **Define your setups once**, e.g. `Handheld` and `eGPU Dock`.
+2. **Add your games.** Steam games (including Proton games on Linux) are found automatically, and so are their config files.
+3. **Switch setup.** Every game's config is swapped to the version saved for that setup. The configs you were using are saved back first, so tweaks aren't lost.
+4. **Optional:** let it switch automatically when the eGPU is plugged in or unplugged.
 
-- Simple UI interface, easily to navigated. 
-- Support for multiple graphics configurations per game. 
-- Ability to save and load configuration files on the fly. 
-- Dynamic Import of games from Steam, GOG, and Epic Launchers.
+Swaps are safe. They're refused while the game is running, the live config is backed up first, and the files are written atomically.
 
-## Planned Features
+## Development
 
-- EGPU detection and automatic profile deployment.
-- Improved UI navigation features
-- Automatic graphics configuration pathing (currently manual pathing is required).
+Requires Python 3.11 or newer.
 
+```bash
+git clone git@github.com:QPfixxy/QPs-Graphics-Manager.git
+cd QPs-Graphics-Manager
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
 
-## Project Structure
-
-```
-QPs-settings-manager
-├── src
-│   ├── main.py                # Entry point of the application
-│   ├── ui
-│   │   └── main_window.py     # Main user interface definition
-│   ├── controllers
-│   │   └── settings_controller.py # Logic for managing graphics settings
-│   └── models
-│       └── settings_model.py   # Data structure for graphics settings
-├── requirements.txt            # Project dependencies
-├── setup.py                    # Packaging information
-└── README.md                   # Project documentation
+pytest                           # run the tests
+ruff check .                     # lint
+qpgm info                        # show the data folder and library summary
 ```
 
-## Installation
+The app keeps its data in the per-user folder for each OS: `~/.local/share/qpgm` on Linux and `%LOCALAPPDATA%\qpgm` on Windows. Set `QPGM_DATA_DIR` to use a different folder.
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/graphics-settings-manager.git
-   cd graphics-settings-manager
-   ```
+### Layout
 
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-## Usage
-
-To run the application, execute the following command:
 ```
-python src/main.py
+src/qpgm/
+  core/      data model, storage, paths (no GUI code)
+  gui/       PySide6 app (Phase 1) and bundled icons
+  cli.py     `qpgm` command
+tests/
 ```
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a pull request or open an issue for any suggestions or improvements.
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for more details.
+Each phase adds the `platform/` and `daemon/` packages described in the roadmap when it needs them.
