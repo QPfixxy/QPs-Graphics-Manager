@@ -30,6 +30,9 @@ pytest                           # run the tests
 ruff check .                     # lint
 qpgm info                        # show the data folder and library summary
 qpgm steam [--import]            # list installed Steam games (and add them to the library)
+qpgm setup add "eGPU Dock"       # define a setup (also: qpgm setup list)
+qpgm switch "eGPU Dock"          # apply every game's config for that setup
+qpgm undo                        # put back the configs from before the last switch
 ```
 
 The app keeps its data in the per-user folder for each OS: `~/.local/share/qpgm` on Linux and `%LOCALAPPDATA%\qpgm` on Windows. Set `QPGM_DATA_DIR` to use a different folder.

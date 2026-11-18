@@ -109,6 +109,7 @@ def test_round_trip(lib):
         lambda d: d["games"][0].pop("name"),
         lambda d: d["games"][0]["config_locations"][0].update(kind="symlink"),
         lambda d: d.update(settings="oops"),
+        lambda d: d["games"][0]["config_locations"][0].update(exclude="saves/*"),
     ],
 )
 def test_invalid_data_is_rejected(lib, mutate):
@@ -116,3 +117,14 @@ def test_invalid_data_is_rejected(lib, mutate):
     mutate(data)
     with pytest.raises(LibraryError):
         Library.from_dict(data)
+
+
+def test_location_patterns():
+    loc = ConfigLocation("/x", LocationKind.DIRECTORY, include=["*.ini", "gfx/*"],
+                         exclude=["saves/*", "*.bak"])
+    assert loc.matches("settings.ini")
+    assert loc.matches("sub/settings.ini")  # name match
+    assert loc.matches("gfx/shaders.cfg")
+    assert not loc.matches("saves/slot.ini")
+    assert not loc.matches("old.ini.bak") and not loc.matches("readme.txt")
+    assert ConfigLocation("/x", LocationKind.DIRECTORY).matches("anything/at/all")

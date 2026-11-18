@@ -15,6 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from fnmatch import fnmatch
 from typing import Any
 
 SCHEMA_VERSION = 1
@@ -39,15 +40,35 @@ class LocationKind(StrEnum):
 
 @dataclass
 class ConfigLocation:
+    """A config file, or a folder of them.
+
+    For folders, `include` / `exclude` are glob patterns matched against each file's
+    path relative to the folder (e.g. "*.ini", "saves/*"). An empty include means
+    every file. Use exclude to keep save files out when a game mixes them in.
+    """
+
     path: str
     kind: LocationKind = LocationKind.FILE
+    include: list[str] = field(default_factory=list)
+    exclude: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"path": self.path, "kind": self.kind.value}
+        return {"path": self.path, "kind": self.kind.value,
+                "include": list(self.include), "exclude": list(self.exclude)}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ConfigLocation:
-        return cls(path=_req_str(d, "path"), kind=LocationKind(d.get("kind", "file")))
+        return cls(path=_req_str(d, "path"), kind=LocationKind(d.get("kind", "file")),
+                   include=_str_list(d, "include"), exclude=_str_list(d, "exclude"))
+
+    def matches(self, relative: str) -> bool:
+        """Does a file at this folder-relative path (forward slashes) belong to the config?"""
+        name = relative.rsplit("/", 1)[-1]
+
+        def hit(patterns: list[str]) -> bool:
+            return any(fnmatch(relative, p) or fnmatch(name, p) for p in patterns)
+
+        return (not self.include or hit(self.include)) and not hit(self.exclude)
 
 
 @dataclass
@@ -283,3 +304,10 @@ def _req_str(d: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise LibraryError(f"missing or invalid {key!r}")
     return value
+
+
+def _str_list(d: dict[str, Any], key: str) -> list[str]:
+    value = d.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+        raise LibraryError(f"{key!r} must be a list of strings")
+    return list(value)

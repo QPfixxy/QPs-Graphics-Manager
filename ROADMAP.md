@@ -48,11 +48,11 @@ The headless daemon matters for Bazzite and SteamOS-style Game Mode (gamescope),
 ### Phase 1: Manual switching on both OSes (MVP)
 - [x] Steam game discovery from `libraryfolders.vdf` and `appmanifest_*.acf` (Windows, Linux, Flatpak Steam), including Proton prefixes
 - [ ] Add games by hand and pick their config files, including games with several files or a whole folder
-- [ ] Safe swapping:
-  - [ ] refuse while the game is running
-  - [ ] back up the live config before every swap
-  - [ ] atomic writes, so a crash can't leave a half-written config
-  - [ ] undo
+- [x] Safe swapping:
+  - [x] refuse while the game is running
+  - [x] back up the live config before every swap
+  - [x] atomic writes, so a crash can't leave a half-written config
+  - [x] undo
 - [ ] Posters from Steam's cached library artwork
 - [ ] GUI built around setups
 
