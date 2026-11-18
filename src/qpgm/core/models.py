@@ -69,6 +69,8 @@ class Game:
     config_locations: list[ConfigLocation] = field(default_factory=list)
     steam_app_id: int | None = None
     install_dir: str | None = None
+    # Linux/Proton only: the game's Wine prefix (steamapps/compatdata/<appid>/pfx).
+    proton_prefix: str | None = None
     id: str = field(default_factory=new_id)
 
     def to_dict(self) -> dict[str, Any]:
@@ -77,6 +79,7 @@ class Game:
             "name": self.name,
             "steam_app_id": self.steam_app_id,
             "install_dir": self.install_dir,
+            "proton_prefix": self.proton_prefix,
             "config_locations": [loc.to_dict() for loc in self.config_locations],
         }
 
@@ -90,6 +93,7 @@ class Game:
             name=_req_str(d, "name"),
             steam_app_id=app_id,
             install_dir=d.get("install_dir"),
+            proton_prefix=d.get("proton_prefix"),
             config_locations=[ConfigLocation.from_dict(x) for x in d.get("config_locations", [])],
         )
 
