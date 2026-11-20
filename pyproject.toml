@@ -8,7 +8,7 @@ description = "Keep one copy of each game's graphics settings per hardware setup
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
-authors = [{ name = "Dakota Naylor" }]
+authors = [{ name = "QPfixxy" }]
 requires-python = ">=3.11"
 dynamic = ["version"]
 dependencies = [

@@ -134,6 +134,6 @@ The original v0.1 (PyQt5) is kept on the [`legacy`](https://github.com/QPfixxy/Q
 
 ## License
 
-Copyright (C) 2025-2026 Dakota Naylor
+Copyright (C) 2025-2026 QPfixxy
 
 QP's Graphics Manager is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License](LICENSE), version 3 or (at your option) any later version. In short, you may use, share and change it, but any version you distribute must also be released as open source under the GPL. It comes with no warranty.
