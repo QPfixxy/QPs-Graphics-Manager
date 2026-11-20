@@ -48,6 +48,7 @@ def _parser() -> argparse.ArgumentParser:
         return p
 
     cmd(sub, "info", _info, "show where data is stored and what's in the library")
+    cmd(sub, "gui", _gui, "open the app window")
 
     p = cmd(sub, "steam", _steam, "list installed Steam games")
     p.add_argument("--import", dest="do_import", action="store_true",
@@ -145,6 +146,12 @@ def _active_name(lib: Library) -> str:
 
 
 # --- info / steam -----------------------------------------------------------------
+
+
+def _gui(args) -> int:
+    from qpgm.gui.app import main as gui_main
+
+    return gui_main()
 
 
 def _info(args) -> int:

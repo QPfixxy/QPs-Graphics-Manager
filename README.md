@@ -4,7 +4,7 @@ Keep a separate copy of each game's graphics settings for every hardware setup y
 
 It's built for handheld gaming PCs (ROG Ally, Legion Go, Steam Deck, ...) and laptops that are sometimes plugged into an external GPU. Run 4K ultra when docked to the eGPU and 720p low on the go, without changing settings in every game each time.
 
-> **Status: v2 rewrite in progress.** This branch is a ground-up rewrite for Windows and Linux (including Bazzite and Proton games). It doesn't have a GUI yet. The original v0.1 app is on the [`legacy`](https://github.com/QPfixxy/QPs-Graphics-Manager/tree/legacy) branch and the [`v0.1`](https://github.com/QPfixxy/QPs-Graphics-Manager/releases/tag/v0.1) tag. See [ROADMAP.md](ROADMAP.md) for the plan.
+> **Status: v2 rewrite in progress.** This branch is a ground-up rewrite for Windows and Linux (including Bazzite and Proton games). The original v0.1 app is on the [`legacy`](https://github.com/QPfixxy/QPs-Graphics-Manager/tree/legacy) branch and the [`v0.1`](https://github.com/QPfixxy/QPs-Graphics-Manager/releases/tag/v0.1) tag. See [ROADMAP.md](ROADMAP.md) for the plan.
 
 ## How it will work
 
@@ -29,11 +29,12 @@ pip install -e ".[dev]"
 pytest                           # run the tests
 ruff check .                     # lint
 qpgm --help                      # every command
+qpgm gui                         # open the app window (or: qpgm-gui)
 ```
 
 ### Trying it from the command line
 
-There's no GUI yet, but the whole workflow runs from the `qpgm` command:
+Everything the app window does also works from the `qpgm` command:
 
 ```bash
 qpgm setup add "Handheld"

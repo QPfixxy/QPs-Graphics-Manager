@@ -96,6 +96,8 @@ class Game:
     # Extra ways to tell the game is running: full paths, or bare file names such as
     # "Cyberpunk2077.exe" (which also match a Proton/Wine command line).
     executables: list[str] = field(default_factory=list)
+    # Custom poster image chosen by the user (otherwise Steam's cached art is used).
+    poster: str | None = None
     id: str = field(default_factory=new_id)
 
     def to_dict(self) -> dict[str, Any]:
@@ -106,6 +108,7 @@ class Game:
             "install_dir": self.install_dir,
             "proton_prefix": self.proton_prefix,
             "executables": list(self.executables),
+            "poster": self.poster,
             "config_locations": [loc.to_dict() for loc in self.config_locations],
         }
 
@@ -121,6 +124,7 @@ class Game:
             install_dir=d.get("install_dir"),
             proton_prefix=d.get("proton_prefix"),
             executables=_str_list(d, "executables"),
+            poster=d.get("poster"),
             config_locations=[ConfigLocation.from_dict(x) for x in d.get("config_locations", [])],
         )
 

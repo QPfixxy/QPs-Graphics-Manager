@@ -17,11 +17,15 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-qt>=4.4",
     "ruff>=0.6",
 ]
 
 [project.scripts]
 qpgm = "qpgm.cli:main"
+
+[project.gui-scripts]
+qpgm-gui = "qpgm.gui.app:main"
 
 [project.urls]
 Repository = "https://github.com/QPfixxy/QPs-Graphics-Manager"
@@ -37,6 +41,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+qt_api = "pyside6"
 addopts = "-ra"
 
 [tool.ruff]

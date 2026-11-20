@@ -53,8 +53,8 @@ The headless daemon matters for Bazzite and SteamOS-style Game Mode (gamescope),
   - [x] back up the live config before every swap
   - [x] atomic writes, so a crash can't leave a half-written config
   - [x] undo
-- [ ] Posters from Steam's cached library artwork
-- [ ] GUI built around setups
+- [x] Posters from Steam's cached library artwork
+- [x] GUI built around setups
 
 ### Phase 2: Automatic config detection
 - [ ] Load the Ludusavi manifest's config paths

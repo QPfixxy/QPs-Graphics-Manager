@@ -146,12 +146,28 @@ def _read_capture(snap_dir: Path) -> list[dict[str, Any]]:
         raise SwapError(f"snapshot in {snap_dir} is unreadable: {e}") from e
 
 
+def _matches(entries: list[dict[str, Any]], game: Game) -> bool:
+    current = [loc.to_dict() for loc in game.config_locations]
+    saved = [{k: e.get(k, []) for k in ("path", "kind", "include", "exclude")} for e in entries]
+    return saved == current
+
+
+def snapshot_matches(root: Path, game: Game, setup_id: str) -> bool:
+    """False if the game's config locations changed since this snapshot was saved."""
+    try:
+        return _matches(_read_capture(paths.snapshot_dir(root, game.id, setup_id)), game)
+    except SwapError:
+        return False
+
+
+def can_undo(root: Path) -> bool:
+    return bool(_ops(root))
+
+
 def _plan(game: Game, snap_dir: Path) -> list[tuple[Path, Path]]:
     """(snapshot file, live target) pairs that applying this snapshot will write."""
     entries = _read_capture(snap_dir)
-    current = [loc.to_dict() for loc in game.config_locations]
-    saved = [{k: e.get(k, []) for k in ("path", "kind", "include", "exclude")} for e in entries]
-    if saved != current:
+    if not _matches(entries, game):
         raise SnapshotMismatchError(
             f"{game.name}'s config locations changed since this snapshot was saved; "
             "save it again"
