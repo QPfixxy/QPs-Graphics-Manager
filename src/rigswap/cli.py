@@ -1,7 +1,7 @@
-"""Command-line interface: `qpgm switch "eGPU Dock"` and friends.
+"""Command-line interface: `rigswap switch "eGPU Dock"` and friends.
 
 Games and setups are named on the command line by name (any case); games can also
-be named by Steam app id or the start of their id (shown by `qpgm game list`).
+be named by Steam app id or the start of their id (shown by `rigswap game list`).
 """
 
 from __future__ import annotations
@@ -12,9 +12,9 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from qpgm import __version__
-from qpgm.core.models import ConfigLocation, Game, Library, LibraryError, LocationKind, Setup
-from qpgm.core.store import LibraryStore
+from rigswap import __version__
+from rigswap.core.models import ConfigLocation, Game, Library, LibraryError, LocationKind, Setup
+from rigswap.core.store import LibraryStore
 
 
 class CliError(Exception):
@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     if handler is None:
         parser.print_help()
         return 0
-    from qpgm.core.swap import SwapError
+    from rigswap.core.swap import SwapError
 
     try:
         return handler(args)
@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="qpgm", description="QP's Graphics Manager")
+    parser = argparse.ArgumentParser(prog="rigswap", description="RigSwap")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
@@ -100,7 +100,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--exclude", action="append", default=[], metavar="GLOB",
                    help="folders only: never these files, e.g. 'saves/*' (repeatable)")
     p = cmd(config_sub, "remove", _config_remove,
-            "remove a config location (its number from qpgm game show)")
+            "remove a config location (its number from rigswap game show)")
     p.add_argument("game")
     p.add_argument("number", type=int)
 
@@ -149,7 +149,7 @@ def _active_name(lib: Library) -> str:
 
 
 def _gui(args) -> int:
-    from qpgm.gui.app import main as gui_main
+    from rigswap.gui.app import main as gui_main
 
     return gui_main()
 
@@ -162,7 +162,7 @@ def _info(args) -> int:
 
 
 def _steam(args) -> int:
-    from qpgm.core import steam
+    from rigswap.core import steam
 
     installs = steam.find_steam_installs()
     if not installs:
@@ -191,7 +191,7 @@ def _steam(args) -> int:
 def _setup_list(args) -> int:
     _, lib = _open()
     if not lib.setups:
-        print('No setups yet. Add one with: qpgm setup add "Handheld"')
+        print('No setups yet. Add one with: rigswap setup add "Handheld"')
     for s in lib.setups:
         marker = "*" if s.id == lib.settings.active_setup_id else " "
         count = sum(1 for snap in lib.snapshots if snap.setup_id == s.id)
@@ -218,7 +218,7 @@ def _setup_rename(args) -> int:
 
 
 def _setup_remove(args) -> int:
-    from qpgm.core import swap
+    from rigswap.core import swap
 
     store, lib = _open()
     setup = _find_setup(lib, args.name)
@@ -239,8 +239,8 @@ def _setup_remove(args) -> int:
 def _game_list(args) -> int:
     _, lib = _open()
     if not lib.games:
-        print("No games yet. Import Steam games with: qpgm steam --import, "
-              'or add one with: qpgm game add "Name"')
+        print("No games yet. Import Steam games with: rigswap steam --import, "
+              'or add one with: rigswap game add "Name"')
     for g in sorted(lib.games, key=lambda g: g.name.casefold()):
         source = f"steam {g.steam_app_id}" if g.steam_app_id else "manual"
         saved = [lib.setup(s.setup_id).name for s in lib.snapshots if s.game_id == g.id]
@@ -260,7 +260,7 @@ def _game_add(args) -> int:
     print(f"Added {game.name} ({game.id[:8]}).")
     if not (game.install_dir or game.executables):
         print("Tip: give it --install-dir or --exe so switching can check it isn't running.")
-    print(f'Next: qpgm config add "{game.name}" <path to its config file or folder>')
+    print(f'Next: rigswap config add "{game.name}" <path to its config file or folder>')
     return 0
 
 
@@ -320,7 +320,7 @@ def _game_edit(args) -> int:
 
 
 def _game_remove(args) -> int:
-    from qpgm.core import swap
+    from rigswap.core import swap
 
     store, lib = _open()
     g = lib.find_game(args.game)
@@ -387,7 +387,7 @@ def _warn_stale(lib: Library, g: Game) -> None:
 
 
 def _save(args) -> int:
-    from qpgm.core import swap
+    from rigswap.core import swap
 
     store, lib = _open()
     setup = _find_setup(lib, args.setup)
@@ -404,7 +404,7 @@ def _save(args) -> int:
 
 
 def _switch(args) -> int:
-    from qpgm.core import swap
+    from rigswap.core import swap
 
     store, lib = _open()
     setup = _find_setup(lib, args.setup)
@@ -419,15 +419,15 @@ def _switch(args) -> int:
           f"{len(result.saved)} saved, {len(result.without_snapshot)} without a snapshot.")
     for g in result.stale:
         print(f"Skipped {g.name}: its config locations changed since it was saved for "
-              f'{setup.name}. Run: qpgm save "{setup.name}" "{g.name}"')
+              f'{setup.name}. Run: rigswap save "{setup.name}" "{g.name}"')
     for g in result.unchecked:
         print(f"Warning: couldn't check whether {g.name} was running "
-              "(give it --install-dir or --exe with qpgm game edit).")
+              "(give it --install-dir or --exe with rigswap game edit).")
     return 0
 
 
 def _undo(args) -> int:
-    from qpgm.core import swap
+    from rigswap.core import swap
 
     store, lib = _open()
     result = swap.undo_last(store.root, lib)

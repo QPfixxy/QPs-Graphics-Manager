@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "qps-graphics-manager"
+name = "rigswap"
 description = "Keep one copy of each game's graphics settings per hardware setup (handheld, eGPU dock, ...) and swap between them."
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -25,22 +25,22 @@ dev = [
 ]
 
 [project.scripts]
-qpgm = "qpgm.cli:main"
+rigswap = "rigswap.cli:main"
 
 [project.gui-scripts]
-qpgm-gui = "qpgm.gui.app:main"
+rigswap-gui = "rigswap.gui.app:main"
 
 [project.urls]
-Repository = "https://github.com/QPfixxy/QPs-Graphics-Manager"
+Repository = "https://github.com/QPfixxy/RigSwap"
 
 [tool.setuptools.dynamic]
-version = { attr = "qpgm.__version__" }
+version = { attr = "rigswap.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"qpgm.gui" = ["resources/icons/*.png"]
+"rigswap.gui" = ["resources/icons/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

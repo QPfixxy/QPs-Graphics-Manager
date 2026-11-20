@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from qpgm import cli
-from qpgm.core import paths
-from qpgm.gui import icon_path
+from rigswap import cli
+from rigswap.core import paths
+from rigswap.gui import icon_path
 
 
 def test_env_override(monkeypatch, tmp_path):
@@ -29,4 +29,4 @@ def test_cli_info(monkeypatch, tmp_path, capsys):
 
 
 def test_icons_are_packaged():
-    assert Path(icon_path("QPGM.png")).is_file()
+    assert Path(icon_path("app.png")).is_file()

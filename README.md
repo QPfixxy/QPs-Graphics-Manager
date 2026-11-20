@@ -1,14 +1,14 @@
 <div align="center">
 
-<img src="src/qpgm/gui/resources/icons/QPGM.png" width="96" alt="">
+<img src="src/rigswap/gui/resources/icons/app.png" width="96" alt="">
 
-# QP's Graphics Manager
+# RigSwap
 
 **One-click graphics settings for every way you play.**
 
 Keep a separate copy of each game's graphics settings for each hardware setup, such as a handheld, an eGPU dock or a laptop on battery, and switch all of them at once.
 
-[![CI](https://github.com/QPfixxy/QPs-Graphics-Manager/actions/workflows/ci.yml/badge.svg)](https://github.com/QPfixxy/QPs-Graphics-Manager/actions/workflows/ci.yml)
+[![CI](https://github.com/QPfixxy/RigSwap/actions/workflows/ci.yml/badge.svg)](https://github.com/QPfixxy/RigSwap/actions/workflows/ci.yml)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-informational)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-green)](LICENSE)
@@ -16,13 +16,13 @@ Keep a separate copy of each game's graphics settings for each hardware setup, s
 
 </div>
 
-![QP's Graphics Manager main window](docs/images/main-window.png)
+![RigSwap main window](docs/images/main-window.png)
 
 ## Why
 
 Handheld gaming PCs and laptops are often plugged into an external GPU. Docked, you want 4K at ultra settings. On the go, you want 720p at low settings and a long battery life. Games keep only one set of graphics settings, so every change of setup means opening each game's options menu again.
 
-QP's Graphics Manager saves each game's settings once for each setup. Pick a setup and every game's settings are swapped in one step.
+RigSwap saves each game's settings once for each setup. Pick a setup and every game's settings are swapped in one step.
 
 ## Features
 
@@ -37,7 +37,7 @@ QP's Graphics Manager saves each game's settings once for each setup. Pick a set
   - If anything fails partway through, everything is rolled back.
   - **Undo** puts back the configs from before the last switch.
 - **Protects your saves.** Some games keep save files in their config folder. Include and exclude patterns keep saves out of the snapshots, and switching never deletes files.
-- **Desktop app and command line.** Everything in the app also works from the `qpgm` command, which is handy for scripts and for gaming modes without a desktop.
+- **Desktop app and command line.** Everything in the app also works from the `rigswap` command, which is handy for scripts and for gaming modes without a desktop.
 
 <p align="center">
   <img src="docs/images/folder-files.png" width="480" alt="Choosing which files in a config folder belong to the snapshot">
@@ -57,12 +57,12 @@ QP's Graphics Manager saves each game's settings once for each setup. Pick a set
 > **Pre-release.** There are no installers yet, so run it from source. It needs Python 3.11 or newer.
 
 ```bash
-git clone https://github.com/QPfixxy/QPs-Graphics-Manager.git
-cd QPs-Graphics-Manager
+git clone https://github.com/QPfixxy/RigSwap.git
+cd RigSwap
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e .
-qpgm gui
+rigswap gui
 ```
 
 Once the app is open:
@@ -76,25 +76,25 @@ Once the app is open:
 ### Command line
 
 ```bash
-qpgm setup add "Handheld"
-qpgm steam --import                                   # add installed Steam games
-qpgm game add "Elden Ring" --exe eldenring.exe        # or add any game by hand
-qpgm config add "Elden Ring" "%APPDATA%\EldenRing" --include "*.xml"
-qpgm save "Handheld" "Elden Ring"                     # save the current settings for a setup
-qpgm switch "eGPU Dock"                               # apply every game's eGPU Dock settings
-qpgm undo                                             # put back the configs from before the last switch
+rigswap setup add "Handheld"
+rigswap steam --import                                   # add installed Steam games
+rigswap game add "Elden Ring" --exe eldenring.exe        # or add any game by hand
+rigswap config add "Elden Ring" "%APPDATA%\EldenRing" --include "*.xml"
+rigswap save "Handheld" "Elden Ring"                     # save the current settings for a setup
+rigswap switch "eGPU Dock"                               # apply every game's eGPU Dock settings
+rigswap undo                                             # put back the configs from before the last switch
 ```
 
-Run `qpgm --help` for the full list of commands.
+Run `rigswap --help` for the full list of commands.
 
 ## Where your data lives
 
 Saved configs and backups are stored in your user data folder and never inside game folders:
 
-- **Windows:** `%LOCALAPPDATA%\qpgm`
-- **Linux:** `~/.local/share/qpgm`
+- **Windows:** `%LOCALAPPDATA%\rigswap`
+- **Linux:** `~/.local/share/rigswap`
 
-Set `QPGM_DATA_DIR` to use a different folder.
+Set `RIGSWAP_DATA_DIR` to use a different folder.
 
 ## Roadmap
 
@@ -116,16 +116,16 @@ ruff check .        # lint
 ```
 
 ```
-src/qpgm/
+src/rigswap/
   core/     data model, Steam discovery, artwork, safe swapping (no GUI code)
   gui/      PySide6 desktop app
-  cli.py    the qpgm command
+  cli.py    the rigswap command
 tests/
 ```
 
 Bug reports and pull requests are welcome.
 
-The original v0.1 (PyQt5) is kept on the [`legacy`](https://github.com/QPfixxy/QPs-Graphics-Manager/tree/legacy) branch.
+The original v0.1 (PyQt5) is kept on the [`legacy`](https://github.com/QPfixxy/RigSwap/tree/legacy) branch.
 
 ## Related projects
 
@@ -136,4 +136,4 @@ The original v0.1 (PyQt5) is kept on the [`legacy`](https://github.com/QPfixxy/Q
 
 Copyright (C) 2025-2026 QPfixxy
 
-QP's Graphics Manager is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License](LICENSE), version 3 or (at your option) any later version. In short, you may use, share and change it, but any version you distribute must also be released as open source under the GPL. It comes with no warranty.
+RigSwap is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License](LICENSE), version 3 or (at your option) any later version. In short, you may use, share and change it, but any version you distribute must also be released as open source under the GPL. It comes with no warranty.

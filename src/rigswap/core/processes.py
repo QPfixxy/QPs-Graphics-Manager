@@ -18,7 +18,7 @@ from collections.abc import Iterable, Iterator
 
 import psutil
 
-from qpgm.core.models import Game
+from rigswap.core.models import Game
 
 # (exe, cmdline) for one process.
 ProcInfo = tuple[str | None, list[str]]

@@ -1,4 +1,4 @@
-"""Start the desktop app: `qpgm gui` or `qpgm-gui`."""
+"""Start the desktop app: `rigswap gui` or `rigswap-gui`."""
 
 from __future__ import annotations
 
@@ -7,24 +7,24 @@ import sys
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from qpgm.core.models import LibraryError
-from qpgm.gui import icon_path, theme
+from rigswap.core.models import LibraryError
+from rigswap.gui import icon_path, theme
 
 
 def main() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setApplicationName("QP's Graphics Manager")
-    app.setDesktopFileName("qpgm")
-    app.setWindowIcon(QIcon(icon_path("QPGM.png")))
+    app.setApplicationName("RigSwap")
+    app.setDesktopFileName("rigswap")
+    app.setWindowIcon(QIcon(icon_path("app.png")))
     theme.apply(app)
 
-    from qpgm.gui.main_window import MainWindow
-    from qpgm.gui.state import AppState
+    from rigswap.gui.main_window import MainWindow
+    from rigswap.gui.state import AppState
 
     try:
         state = AppState()
     except LibraryError as e:
-        QMessageBox.critical(None, "QP's Graphics Manager",
+        QMessageBox.critical(None, "RigSwap",
                              f"Your library file can't be read, so nothing was changed.\n\n{e}")
         return 1
     window = MainWindow(state)

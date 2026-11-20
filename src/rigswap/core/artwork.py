@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from qpgm.core.models import Game
+from rigswap.core.models import Game
 
 _IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 _PORTRAIT_NAMES = ("library_600x900_2x.jpg", "library_600x900.jpg", "library_capsule.jpg")

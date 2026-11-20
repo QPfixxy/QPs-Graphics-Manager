@@ -15,10 +15,10 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
-from qpgm.core import steam, swap
-from qpgm.core.artwork import Art, find_art
-from qpgm.core.models import ConfigLocation, Game, Setup
-from qpgm.core.store import LibraryStore
+from rigswap.core import steam, swap
+from rigswap.core.artwork import Art, find_art
+from rigswap.core.models import ConfigLocation, Game, Setup
+from rigswap.core.store import LibraryStore
 
 
 class SnapState(Enum):

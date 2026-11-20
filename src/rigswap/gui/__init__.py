@@ -4,5 +4,5 @@ from importlib.resources import files
 
 
 def icon_path(name: str) -> str:
-    """Path to a bundled icon, e.g. icon_path("QPGM.png")."""
+    """Path to a bundled icon, e.g. icon_path("app.png")."""
     return str(files(__name__) / "resources" / "icons" / name)

@@ -1,12 +1,12 @@
-"""Where QPGM keeps its own data.
+"""Where RigSwap keeps its own data.
 
 Everything lives in the OS's per-user data folder, never next to the app:
 
-- Linux:   ~/.local/share/qpgm  (respects $XDG_DATA_HOME, so Flatpak works too)
-- Windows: %LOCALAPPDATA%\\qpgm
-- macOS:   ~/Library/Application Support/qpgm
+- Linux:   ~/.local/share/rigswap  (respects $XDG_DATA_HOME, so Flatpak works too)
+- Windows: %LOCALAPPDATA%\\rigswap
+- macOS:   ~/Library/Application Support/rigswap
 
-Set QPGM_DATA_DIR to override (tests, portable installs).
+Set RIGSWAP_DATA_DIR to override (tests, portable installs).
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ from pathlib import Path
 
 from platformdirs import user_data_path
 
-APP_DIR_NAME = "qpgm"
-DATA_DIR_ENV = "QPGM_DATA_DIR"
+APP_DIR_NAME = "rigswap"
+DATA_DIR_ENV = "RIGSWAP_DATA_DIR"
 
 
 def data_dir() -> Path:

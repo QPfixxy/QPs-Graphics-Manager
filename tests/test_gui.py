@@ -8,10 +8,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QLabel, QPushButton  # noqa: E402
 
-from qpgm.core.models import ConfigLocation, Game, LocationKind  # noqa: E402
-from qpgm.core.store import LibraryStore  # noqa: E402
-from qpgm.gui.main_window import GAME_ID_ROLE, STATUS_ROLE, MainWindow  # noqa: E402
-from qpgm.gui.state import AppState, SnapState  # noqa: E402
+from rigswap.core.models import ConfigLocation, Game, LocationKind  # noqa: E402
+from rigswap.core.store import LibraryStore  # noqa: E402
+from rigswap.gui.main_window import GAME_ID_ROLE, STATUS_ROLE, MainWindow  # noqa: E402
+from rigswap.gui.state import AppState, SnapState  # noqa: E402
 
 
 class Prompts:

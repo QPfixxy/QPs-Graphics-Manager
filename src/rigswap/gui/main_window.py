@@ -44,12 +44,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from qpgm import __version__
-from qpgm.core import processes, swap
-from qpgm.core.models import ConfigLocation, Game, LibraryError, LocationKind, Setup
-from qpgm.gui import icon_path
-from qpgm.gui.posters import CARD_H, CARD_W, PosterCache
-from qpgm.gui.state import AppState, SnapState
+from rigswap import __version__
+from rigswap.core import processes, swap
+from rigswap.core.models import ConfigLocation, Game, LibraryError, LocationKind, Setup
+from rigswap.gui import icon_path
+from rigswap.gui.posters import CARD_H, CARD_W, PosterCache
+from rigswap.gui.state import AppState, SnapState
 
 GAME_ID_ROLE = Qt.ItemDataRole.UserRole + 1
 STATUS_ROLE = Qt.ItemDataRole.UserRole + 2
@@ -140,7 +140,7 @@ class GameDialog(QDialog):
         form.addRow("Name", self.name)
         form.addRow("Install folder", _with_browse(self.install_dir, self._browse_dir))
         form.addRow("Executables", self.exes)
-        hint = QLabel("The install folder or executables let QPGM refuse to swap configs "
+        hint = QLabel("The install folder or executables let RigSwap refuse to swap configs "
                       "while the game is running.")
         hint.setWordWrap(True)
         hint.setObjectName("Hint")
@@ -434,8 +434,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.state = state
         self.posters = PosterCache()
-        self.setWindowTitle("QP's Graphics Manager")
-        self.setWindowIcon(QIcon(icon_path("QPGM.png")))
+        self.setWindowTitle("RigSwap")
+        self.setWindowIcon(QIcon(icon_path("app.png")))
         self.resize(1180, 760)
 
         central = QWidget()
@@ -511,7 +511,7 @@ class MainWindow(QMainWindow):
         splitter.setSizes([700, 460])
         outer.addWidget(splitter, 1)
         self.setCentralWidget(central)
-        self.statusBar().showMessage(f"QPGM {__version__} · data in {_short(str(state.root))}")
+        self.statusBar().showMessage(f"RigSwap {__version__} · data in {_short(str(state.root))}")
 
         state.changed.connect(self.refresh)
         self.refresh()
@@ -524,7 +524,7 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout(header)
         row.setContentsMargins(16, 10, 16, 10)
         logo = QLabel()
-        logo.setPixmap(QIcon(icon_path("QPGM.png")).pixmap(28, 28))
+        logo.setPixmap(QIcon(icon_path("app.png")).pixmap(28, 28))
         row.addWidget(logo)
         label = QLabel("Setup")
         label.setObjectName("Hint")
@@ -727,7 +727,7 @@ class MainWindow(QMainWindow):
             self._try("Edit game", lambda: self.state.update_game(game, dialog.apply_to))
 
     def remove_game(self, game: Game) -> None:
-        if self.ask("Remove game", f"Remove {game.name} from QPGM? Its saved configs are "
+        if self.ask("Remove game", f"Remove {game.name} from RigSwap? Its saved configs are "
                     "deleted; the game and its live config files aren't touched."):
             self._try("Remove game", lambda: self.state.remove_game(game))
 

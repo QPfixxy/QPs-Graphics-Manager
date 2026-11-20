@@ -1,6 +1,6 @@
 import pytest
 
-from qpgm.core import vdf
+from rigswap.core import vdf
 
 
 def test_nested_and_escapes():

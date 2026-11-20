@@ -1,5 +1,5 @@
-from qpgm.core.artwork import Art, find_art
-from qpgm.core.models import Game
+from rigswap.core.artwork import Art, find_art
+from rigswap.core.models import Game
 
 
 def touch(path):

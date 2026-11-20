@@ -4,10 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from qpgm import cli
-from qpgm.core import paths, steam
-from qpgm.core.models import Game, Library
-from qpgm.core.steam import SteamInstall
+from rigswap import cli
+from rigswap.core import paths, steam
+from rigswap.core.models import Game, Library
+from rigswap.core.steam import SteamInstall
 
 
 def _q(s: str) -> str:

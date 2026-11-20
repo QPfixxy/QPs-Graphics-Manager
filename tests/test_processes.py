@@ -5,8 +5,8 @@ import time
 
 import pytest
 
-from qpgm.core.models import Game
-from qpgm.core.processes import running_games
+from rigswap.core.models import Game
+from rigswap.core.processes import running_games
 
 
 def game(name, install_dir):

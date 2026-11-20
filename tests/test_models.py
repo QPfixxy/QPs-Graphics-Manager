@@ -1,6 +1,6 @@
 import pytest
 
-from qpgm.core.models import (
+from rigswap.core.models import (
     SCHEMA_VERSION,
     ConfigLocation,
     Game,

@@ -33,9 +33,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from qpgm.core import paths, processes
-from qpgm.core.fsutil import atomic_copy, atomic_write_text, rmtree
-from qpgm.core.models import Game, Library, LocationKind, Setup, Snapshot
+from rigswap.core import paths, processes
+from rigswap.core.fsutil import atomic_copy, atomic_write_text, rmtree
+from rigswap.core.models import Game, Library, LocationKind, Setup, Snapshot
 
 CAPTURE_FILE = "capture.json"
 RECORDS_FILE = "records.json"

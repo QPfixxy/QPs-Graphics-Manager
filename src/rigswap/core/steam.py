@@ -21,8 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
-from qpgm.core import vdf
-from qpgm.core.models import Game, Library
+from rigswap.core import vdf
+from rigswap.core.models import Game, Library
 
 FLATPAK_ID = "com.valvesoftware.Steam"
 

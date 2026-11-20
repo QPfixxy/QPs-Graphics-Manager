@@ -1,6 +1,6 @@
-# QP's Graphics Manager — Roadmap
+# RigSwap — Roadmap
 
-QP's Graphics Manager keeps several versions of each game's graphics settings and swaps between them with one click (or automatically). It's built for handheld gaming PCs and laptops that are sometimes connected to an external GPU (eGPU): 4K ultra when docked, 720p/1080p low on the go.
+RigSwap keeps several versions of each game's graphics settings and swaps between them with one click (or automatically). It's built for handheld gaming PCs and laptops that are sometimes connected to an external GPU (eGPU): 4K ultra when docked, 720p/1080p low on the go.
 
 Version 0.1 (PyQt5, manual paths, per-game profiles) proved the idea. Version 2 is a ground-up rewrite that targets **Windows and Linux**, including Bazzite, SteamOS-style distros, and games running under Proton.
 
@@ -31,7 +31,7 @@ core/        game discovery, config locations, setups, safe swapping (no GUI cod
 platform/    windows.py / linux.py: paths, GPU detection, process checks
 gui/         PySide6 desktop app
 daemon/      background service for auto-switching (tray on desktop, headless for Game Mode)
-cli/         command-line control, e.g. `qpgm switch "eGPU Dock"`
+cli/         command-line control, e.g. `rigswap switch "eGPU Dock"`
 ```
 
 The headless daemon matters for Bazzite and SteamOS-style Game Mode (gamescope), where there is no system tray.

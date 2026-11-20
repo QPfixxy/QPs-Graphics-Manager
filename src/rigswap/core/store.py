@@ -6,9 +6,9 @@ import json
 import shutil
 from pathlib import Path
 
-from qpgm.core import paths
-from qpgm.core.fsutil import atomic_write_text
-from qpgm.core.models import Library, LibraryError
+from rigswap.core import paths
+from rigswap.core.fsutil import atomic_write_text
+from rigswap.core.models import Library, LibraryError
 
 
 class LibraryStore:

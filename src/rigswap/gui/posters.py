@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPixmap
 
-from qpgm.core.artwork import Art
+from rigswap.core.artwork import Art
 
 CARD_W, CARD_H = 150, 225
 RADIUS = 10

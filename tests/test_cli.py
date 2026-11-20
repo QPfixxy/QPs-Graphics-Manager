@@ -2,8 +2,8 @@
 
 import pytest
 
-from qpgm import cli
-from qpgm.core import paths, processes
+from rigswap import cli
+from rigswap.core import paths, processes
 
 
 @pytest.fixture

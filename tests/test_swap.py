@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from qpgm.core import paths, swap
-from qpgm.core.models import ConfigLocation, Game, Library, LocationKind
+from rigswap.core import paths, swap
+from rigswap.core.models import ConfigLocation, Game, Library, LocationKind
 
 
 def not_running(games):

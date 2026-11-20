@@ -2,9 +2,9 @@ import json
 
 import pytest
 
-from qpgm.core.fsutil import atomic_write_text
-from qpgm.core.models import Game, Library, LibraryError
-from qpgm.core.store import LibraryStore
+from rigswap.core.fsutil import atomic_write_text
+from rigswap.core.models import Game, Library, LibraryError
+from rigswap.core.store import LibraryStore
 
 
 def test_missing_file_gives_empty_library(tmp_path):
