@@ -66,6 +66,10 @@ class SwitchResult:
     applied: list[Game]
     saved: list[Game]
     without_snapshot: list[Game]
+    # snapshot no longer matches the game's config locations; skipped, save it again
+    stale: list[Game]
+    # no install folder or executables, so it couldn't be checked for running
+    unchecked: list[Game]
     op_id: str
 
 
@@ -213,14 +217,19 @@ def switch_setup(root: Path, lib: Library, setup_id: str,
     setup = lib.setup(setup_id)
     previous = lib.settings.active_setup_id
     games = [g for g in lib.games if g.config_locations]
-    to_apply = [g for g in games if lib.snapshot(g.id, setup_id)]
+    with_snapshot = [g for g in games if lib.snapshot(g.id, setup_id)]
+    snap_dirs = {g.id: paths.snapshot_dir(root, g.id, setup_id) for g in with_snapshot}
+    to_apply, stale = [], []
+    for g in with_snapshot:
+        try:
+            _plan(g, snap_dirs[g.id])  # fail early on unreadable snapshots
+        except SnapshotMismatchError:
+            stale.append(g)
+        else:
+            to_apply.append(g)
     to_save = games if (lib.settings.save_on_switch and previous and previous != setup_id) else []
     affected = list({g.id: g for g in [*to_save, *to_apply]}.values())
     _refuse_if_running(affected, running)
-
-    snap_dirs = {g.id: paths.snapshot_dir(root, g.id, setup_id) for g in to_apply}
-    for g in to_apply:
-        _plan(g, snap_dirs[g.id])  # fail early on unreadable or mismatched snapshots
 
     for g in to_save:
         _write_snapshot(root, g, previous)
@@ -255,7 +264,9 @@ def switch_setup(root: Path, lib: Library, setup_id: str,
         setup=setup,
         applied=to_apply,
         saved=to_save,
-        without_snapshot=[g for g in games if g not in to_apply],
+        without_snapshot=[g for g in games if g not in with_snapshot],
+        stale=stale,
+        unchecked=[g for g in affected if not processes.can_check(g)],
         op_id=op_id,
     )
 
@@ -280,6 +291,19 @@ def undo_last(root: Path, lib: Library,
 
 
 # --- helpers ----------------------------------------------------------------------
+
+
+def delete_game_data(root: Path, game_id: str) -> None:
+    """Delete a game's snapshot files (after lib.remove_game). Backups are kept for undo."""
+    rmtree(paths.snapshots_dir(root) / game_id)
+
+
+def delete_setup_data(root: Path, setup_id: str) -> None:
+    """Delete every game's snapshot files for a setup (after lib.remove_setup)."""
+    base = paths.snapshots_dir(root)
+    if base.is_dir():
+        for game_dir in base.iterdir():
+            rmtree(game_dir / setup_id)
 
 
 def _refuse_if_running(games: list[Game], running: RunningCheck | None) -> None:

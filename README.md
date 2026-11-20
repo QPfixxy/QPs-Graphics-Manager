@@ -28,12 +28,36 @@ pip install -e ".[dev]"
 
 pytest                           # run the tests
 ruff check .                     # lint
-qpgm info                        # show the data folder and library summary
-qpgm steam [--import]            # list installed Steam games (and add them to the library)
-qpgm setup add "eGPU Dock"       # define a setup (also: qpgm setup list)
+qpgm --help                      # every command
+```
+
+### Trying it from the command line
+
+There's no GUI yet, but the whole workflow runs from the `qpgm` command:
+
+```bash
+qpgm setup add "Handheld"
+qpgm setup add "eGPU Dock"
+
+# Steam games are found automatically...
+qpgm steam --import
+# ...or add any game by hand. --exe lets QPGM see when it's running.
+qpgm game add "Elden Ring" --exe eldenring.exe
+
+# Tell it where the game keeps its graphics settings (a file or a folder).
+# For folders, keep save files out with --exclude.
+qpgm config add "Elden Ring" "%APPDATA%\EldenRing" --include "*.xml"
+
+# Set the game up for each setup, saving each time.
+qpgm save "Handheld" "Elden Ring"
+qpgm save "eGPU Dock" --all
+
 qpgm switch "eGPU Dock"          # apply every game's config for that setup
 qpgm undo                        # put back the configs from before the last switch
+qpgm game show "Elden Ring"      # locations and when each setup was saved
 ```
+
+Switching refuses while an affected game is running, backs up what it overwrites, and never deletes files from your config folders.
 
 The app keeps its data in the per-user folder for each OS: `~/.local/share/qpgm` on Linux and `%LOCALAPPDATA%\qpgm` on Windows. Set `QPGM_DATA_DIR` to use a different folder.
 

@@ -128,3 +128,37 @@ def test_location_patterns():
     assert not loc.matches("saves/slot.ini")
     assert not loc.matches("old.ini.bak") and not loc.matches("readme.txt")
     assert ConfigLocation("/x", LocationKind.DIRECTORY).matches("anything/at/all")
+
+
+def test_find_game(lib):
+    cp = lib.games[0]
+    other = lib.add_game(Game(name="Hades"))
+    twin1 = lib.add_game(Game(name="Doom", id="aaaa1111" + "0" * 24))
+    twin2 = lib.add_game(Game(name="doom", id="aaaa2222" + "0" * 24))
+    assert lib.find_game("cyberpunk 2077") is cp
+    assert lib.find_game("1091500") is cp
+    assert lib.find_game(other.id[:6]) is other
+    assert lib.find_game("aaaa1111") is twin1
+    with pytest.raises(LibraryError, match="several"):
+        lib.find_game("DOOM")
+    with pytest.raises(LibraryError):
+        lib.find_game("aaaa")  # prefix of both
+    with pytest.raises(LibraryError):
+        lib.find_game("nothing")
+    assert twin2 in lib.games
+
+
+def test_config_location_editing(lib):
+    cp = lib.games[0]
+    with pytest.raises(LibraryError, match="already"):
+        lib.add_config_location(cp.id, ConfigLocation(cp.config_locations[0].path + "/"))
+    lib.add_config_location(cp.id, ConfigLocation("/tmp/other.ini"))
+    assert lib.remove_config_location(cp.id, 0).path.endswith("CD Projekt Red")
+    assert [loc.path for loc in cp.config_locations] == ["/tmp/other.ini"]
+    with pytest.raises(LibraryError):
+        lib.remove_config_location(cp.id, 5)
+
+
+def test_executables_round_trip(lib):
+    lib.games[0].executables = ["Cyberpunk2077.exe", "/opt/games/cp/bin/cp.exe"]
+    assert Library.from_dict(lib.to_dict()).games[0].executables == lib.games[0].executables

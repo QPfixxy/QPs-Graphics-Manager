@@ -5,7 +5,9 @@ line, is inside the game's install folder. The command-line check is what catche
 Proton games: their process is Wine, with the game's .exe as an argument, often
 written as a Wine path like Z:\\home\\me\\.steam\\...\\game.exe.
 
-Games without an install folder (added by hand) can't be checked yet.
+A game's `executables` add more matches: a full path matches exactly, a bare file
+name ("eldenring.exe") matches the file name of the process or of any command-line
+path. Games with neither an install folder nor executables can't be checked.
 """
 
 from __future__ import annotations
@@ -49,19 +51,35 @@ def system_processes() -> Iterator[ProcInfo]:
         yield info.get("exe"), info.get("cmdline") or []
 
 
+def can_check(game: Game) -> bool:
+    return bool(game.install_dir or game.executables)
+
+
+def _basename(path: str) -> str:
+    # Case-insensitive everywhere: Wine command lines don't keep .exe capitalisation.
+    return re.split(r"[\\/]", path.rstrip("\\/"))[-1].casefold()
+
+
 def running_games(games: Iterable[Game], processes: Iterable[ProcInfo] | None = None) -> list[Game]:
-    """The games in `games` that have a process running from their install folder."""
-    dirs = {g.id: _norm(g.install_dir) for g in games if g.install_dir}
-    if not dirs:
+    """The games in `games` that have a matching process running."""
+    games = [g for g in games if can_check(g)]
+    if not games:
         return []
-    by_id = {g.id: g for g in games}
+    dirs = {g.id: _norm(g.install_dir) for g in games if g.install_dir}
+    full = {g.id: {_norm(e) for e in g.executables if "/" in e or "\\" in e} for g in games}
+    names = {g.id: {e.casefold() for e in g.executables if "/" not in e and "\\" not in e}
+             for g in games}
     found: set[str] = set()
     for exe, cmdline in processes if processes is not None else system_processes():
         for path in _candidate_paths(exe, cmdline):
-            p = _norm(path)
-            for game_id, d in dirs.items():
-                if game_id not in found and (p == d or p.startswith(d + os.sep)):
-                    found.add(game_id)
-        if len(found) == len(dirs):
+            p, base = _norm(path), _basename(path)
+            for g in games:
+                if g.id in found:
+                    continue
+                d = dirs.get(g.id)
+                if (d and (p == d or p.startswith(d + os.sep))) or p in full[g.id] \
+                        or base in names[g.id]:
+                    found.add(g.id)
+        if len(found) == len(games):
             break
-    return [by_id[i] for i in dirs if i in found]
+    return [g for g in games if g.id in found]

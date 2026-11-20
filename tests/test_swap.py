@@ -99,8 +99,9 @@ def test_include_patterns(tmp_path):
 
 def test_changing_patterns_counts_as_changed_location(env):
     env.rdr.config_locations[0].exclude = []
-    with pytest.raises(swap.SnapshotMismatchError):
-        swap.switch_setup(env.root, env.lib, env.handheld.id, running=not_running)
+    result = swap.switch_setup(env.root, env.lib, env.handheld.id, running=not_running)
+    assert result.stale == [env.rdr]
+    assert (env.rdr_dir / "system.xml").read_text() == "ultra"
 
 
 def test_save_on_switch_keeps_tweaks_made_in_a_setup(env):
@@ -177,13 +178,14 @@ def test_undo_refuses_while_running(env):
     assert live_state(env)[0] == "handheld-720p"
 
 
-def test_changed_locations_are_caught_before_anything_is_written(env, tmp_path):
-    before = live_state(env)
+def test_changed_locations_skip_only_that_game(env, tmp_path):
     env.cp.config_locations = [ConfigLocation(str(tmp_path / "elsewhere.json"))]
-    with pytest.raises(swap.SnapshotMismatchError):
-        swap.switch_setup(env.root, env.lib, env.handheld.id, running=not_running)
-    assert live_state(env) == before
-    assert env.lib.settings.active_setup_id == env.dock.id
+    result = swap.switch_setup(env.root, env.lib, env.handheld.id, running=not_running)
+    assert result.stale == [env.cp] and result.applied == [env.rdr]
+    assert env.cp_cfg.read_text() == "dock-4k"  # untouched
+    assert not (tmp_path / "elsewhere.json").exists()
+    assert (env.rdr_dir / "system.xml").read_text() == "low"
+    assert env.lib.settings.active_setup_id == env.handheld.id
 
 
 def test_missing_live_file_at_save_time_leaves_live_alone(env, tmp_path):
@@ -239,3 +241,21 @@ def test_file_location_that_is_a_folder_is_an_error(env, tmp_path):
     with pytest.raises(swap.SwapError):
         swap.save_snapshot(env.root, env.lib, game, env.dock.id, running=not_running)
     assert not Path(paths.snapshot_dir(env.root, game.id, env.dock.id)).exists()
+
+
+def test_unchecked_games_are_reported(env):
+    env.cp.install_dir = None
+    result = swap.switch_setup(env.root, env.lib, env.handheld.id, running=not_running)
+    assert result.unchecked == [env.cp]
+    env.cp.executables = ["Cyberpunk2077.exe"]
+    result = swap.switch_setup(env.root, env.lib, env.dock.id, running=not_running)
+    assert result.unchecked == []
+
+
+def test_delete_game_and_setup_data(env):
+    swap.delete_setup_data(env.root, env.handheld.id)
+    for g in (env.cp, env.rdr):
+        assert not paths.snapshot_dir(env.root, g.id, env.handheld.id).exists()
+        assert paths.snapshot_dir(env.root, g.id, env.dock.id).exists()
+    swap.delete_game_data(env.root, env.cp.id)
+    assert not (paths.snapshots_dir(env.root) / env.cp.id).exists()

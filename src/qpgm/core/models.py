@@ -11,6 +11,7 @@ IDs are random hex strings so games and setups can be renamed freely.
 
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -92,6 +93,9 @@ class Game:
     install_dir: str | None = None
     # Linux/Proton only: the game's Wine prefix (steamapps/compatdata/<appid>/pfx).
     proton_prefix: str | None = None
+    # Extra ways to tell the game is running: full paths, or bare file names such as
+    # "Cyberpunk2077.exe" (which also match a Proton/Wine command line).
+    executables: list[str] = field(default_factory=list)
     id: str = field(default_factory=new_id)
 
     def to_dict(self) -> dict[str, Any]:
@@ -101,6 +105,7 @@ class Game:
             "steam_app_id": self.steam_app_id,
             "install_dir": self.install_dir,
             "proton_prefix": self.proton_prefix,
+            "executables": list(self.executables),
             "config_locations": [loc.to_dict() for loc in self.config_locations],
         }
 
@@ -115,6 +120,7 @@ class Game:
             steam_app_id=app_id,
             install_dir=d.get("install_dir"),
             proton_prefix=d.get("proton_prefix"),
+            executables=_str_list(d, "executables"),
             config_locations=[ConfigLocation.from_dict(x) for x in d.get("config_locations", [])],
         )
 
@@ -223,6 +229,39 @@ class Library:
         self.games.append(game)
         return game
 
+    def find_game(self, query: str) -> Game:
+        """Find a game by exact name (any case), Steam app id, or the start of its id."""
+        q = query.strip()
+        if not q:
+            raise LibraryError("no game given")
+        by_name = [g for g in self.games if g.name.casefold() == q.casefold()]
+        if len(by_name) == 1:
+            return by_name[0]
+        if q.isdigit():
+            g = self.game_by_steam_app_id(int(q))
+            if g:
+                return g
+        by_id = [g for g in self.games if g.id.startswith(q.lower())] if len(q) >= 4 else []
+        matches = by_name or by_id
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            raise LibraryError(f"no game matches {query!r}")
+        listing = ", ".join(f"{g.name} ({g.id[:8]})" for g in matches)
+        raise LibraryError(f"{query!r} matches several games: {listing}; use the id")
+
+    def add_config_location(self, game_id: str, location: ConfigLocation) -> None:
+        game = self.game(game_id)
+        if any(_same_path(loc.path, location.path) for loc in game.config_locations):
+            raise LibraryError(f"{location.path} is already a config location of {game.name}")
+        game.config_locations.append(location)
+
+    def remove_config_location(self, game_id: str, index: int) -> ConfigLocation:
+        game = self.game(game_id)
+        if not 0 <= index < len(game.config_locations):
+            raise LibraryError(f"{game.name} has no config location #{index + 1}")
+        return game.config_locations.pop(index)
+
     def remove_game(self, game_id: str) -> None:
         """Remove a game and its snapshot records. Deleting the files is the caller's job."""
         self.games.remove(self.game(game_id))
@@ -311,3 +350,7 @@ def _str_list(d: dict[str, Any], key: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
         raise LibraryError(f"{key!r} must be a list of strings")
     return list(value)
+
+
+def _same_path(a: str, b: str) -> bool:
+    return os.path.normcase(os.path.normpath(a)) == os.path.normcase(os.path.normpath(b))

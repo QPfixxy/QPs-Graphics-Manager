@@ -62,3 +62,18 @@ def test_real_process_is_detected(tmp_path):
         proc.kill()
         proc.wait()
     assert running_games([g]) == []
+
+
+def test_bare_executable_name_matches_exe_and_wine_cmdline():
+    g = Game(name="Elden", executables=["eldenring.exe"])
+    assert running_games([g], [(r"C:\Games\ELDEN RING\Game\EldenRing.exe", [])]) == [g]
+    wine = ("/usr/bin/wine64-preloader", [r"Z:\mnt\games\ELDEN RING\Game\eldenring.exe"])
+    assert running_games([g], [wine]) == [g]
+    assert running_games([g], [("/usr/bin/eldenring-launcher", [])]) == []
+
+
+def test_full_executable_path_matches_exactly(tmp_path):
+    exe = tmp_path / "Game" / "game.exe"
+    g = Game(name="G", executables=[str(exe)])
+    assert running_games([g], [(str(exe), [])]) == [g]
+    assert running_games([g], [(str(tmp_path / "Other" / "game.exe"), [])]) == []
