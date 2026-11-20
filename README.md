@@ -11,6 +11,7 @@ Keep a separate copy of each game's graphics settings for each hardware setup, s
 [![CI](https://github.com/QPfixxy/QPs-Graphics-Manager/actions/workflows/ci.yml/badge.svg)](https://github.com/QPfixxy/QPs-Graphics-Manager/actions/workflows/ci.yml)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-informational)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-green)](LICENSE)
 ![Status](https://img.shields.io/badge/status-pre--release-orange)
 
 </div>
@@ -130,3 +131,9 @@ The original v0.1 (PyQt5) is kept on the [`legacy`](https://github.com/QPfixxy/Q
 
 - [Ludusavi](https://github.com/mtkennerly/ludusavi): game save backup. Its manifest will power automatic config detection.
 - [GPUPrefSwitcher](https://github.com/sharpjd/GPUPrefSwitcher) and [Thunderbolt Switch](https://github.com/Valkirie/Thunderbolt-Switch): Windows tools that cover parts of the same problem.
+
+## License
+
+Copyright (C) 2025-2026 Dakota Naylor
+
+QP's Graphics Manager is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License](LICENSE), version 3 or (at your option) any later version. In short, you may use, share and change it, but any version you distribute must also be released as open source under the GPL. It comes with no warranty.
