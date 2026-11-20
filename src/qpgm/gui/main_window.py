@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from pathlib import Path
 
 from PySide6.QtCore import QModelIndex, QRect, QSize, QSortFilterProxyModel, Qt
@@ -181,7 +182,8 @@ class PatternsDialog(QDialog):
         self.setWindowTitle("Which files in this folder?")
         self.setMinimumWidth(480)
         form = QFormLayout(self)
-        label = QLabel(f"<b>{loc.path}</b><br>Patterns are matched against each file's path "
+        shown = html.escape(_short(loc.path))
+        label = QLabel(f"<b>{shown}</b><br>Patterns are matched against each file's path "
                        "inside the folder, e.g. <code>*.ini</code> or <code>saves/*</code>. "
                        "Leave Include empty to take every file.")
         label.setWordWrap(True)
