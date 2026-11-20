@@ -40,7 +40,7 @@ version = { attr = "rigswap.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-"rigswap.gui" = ["resources/icons/*.png"]
+"rigswap.gui" = ["resources/icons/*.png", "resources/icons/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

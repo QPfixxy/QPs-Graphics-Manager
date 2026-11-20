@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/rigswap/gui/resources/icons/app.png" width="96" alt="">
+<img src="docs/logo/rigswap-icon.svg" width="112" alt="RigSwap logo">
 
 # RigSwap
 
