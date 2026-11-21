@@ -418,3 +418,25 @@ def test_import_dialog_ticks_new_suggested_games(env, monkeypatch):
     env.window.with_manifest = lambda then, asked_by_user: None
     env.window.import_games()
     assert sorted(g.name for g in env.state.lib.games) == ["Control", "Hades"]
+
+
+def test_learn_dialog_flow(env):
+    from rigswap.core import learn
+    from rigswap.gui.main_window import LearnDialog
+
+    game, cfg = make_game(env, "Hollow Knight")
+    other = env.tmp / "elsewhere.json"
+    scans = iter([learn.Scan(files={str(cfg): (1, 1)}),
+                  learn.Scan(files={str(cfg): (1, 1)}),  # first look again: nothing yet
+                  learn.Scan(files={str(cfg): (2, 2), str(other): (1, 1)})])
+    game.config_locations = []
+    dialog = LearnDialog(env.window, game, lambda: next(scans),
+                         lambda b, a: learn.suggestions(game, b, a), synchronous=True)
+    assert dialog.action.text() == "Start"
+    dialog._next()
+    assert dialog.step == "waiting" and dialog.action.text() == "I've changed a setting"
+    dialog._next()
+    assert "Nothing changed yet" in dialog.text.text() and dialog.action.text() == "Look again"
+    dialog._next()
+    assert dialog.step == "results" and dialog.list.count() == 2
+    assert [loc.path for loc in dialog.chosen()] == [str(cfg)]  # only the likely one ticked

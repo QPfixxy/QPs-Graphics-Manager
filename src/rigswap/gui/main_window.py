@@ -341,6 +341,130 @@ class ImportDialog(QDialog):
         return out
 
 
+class ScanWorker(QThread):
+    finished_scan = Signal(object)
+
+    def __init__(self, fn, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.fn = fn
+
+    def run(self) -> None:
+        try:
+            self.finished_scan.emit(self.fn())
+        except Exception as e:  # shown in the dialog
+            self.finished_scan.emit(e)
+
+
+class LearnDialog(QDialog):
+    """Learn mode: scan, let the user change a setting in the game, scan again, compare."""
+
+    def __init__(self, parent: QWidget, game: Game, scan_fn, suggest_fn,
+                 synchronous: bool = False) -> None:
+        super().__init__(parent)
+        self.game = game
+        self.scan_fn, self.suggest_fn = scan_fn, suggest_fn
+        self.synchronous = synchronous  # tests run scans on the calling thread
+        self.before = None
+        self.found = []
+        self._worker = None
+        self.setWindowTitle(f"Learn where {game.name} keeps its settings")
+        self.setMinimumSize(620, 460)
+        v = QVBoxLayout(self)
+        self.text = QLabel()
+        self.text.setWordWrap(True)
+        v.addWidget(self.text)
+        self.list = QListWidget()
+        self.list.setVisible(False)
+        v.addWidget(self.list, 1)
+        row = QHBoxLayout()
+        row.addStretch()
+        self.action = QPushButton()
+        self.action.setObjectName("Primary")
+        self.action.clicked.connect(self._next)
+        self.cancel = QPushButton("Cancel")
+        self.cancel.clicked.connect(self.reject)
+        row.addWidget(self.action)
+        row.addWidget(self.cancel)
+        v.addLayout(row)
+        self.step = "intro"
+        self._show_intro()
+
+    def _show_intro(self) -> None:
+        self.text.setText(
+            f"<b>RigSwap will watch what changes while you change a setting.</b><br><br>"
+            f"1. Click <b>Start</b> (and wait a moment while RigSwap takes a first look).<br>"
+            f"2. Start {html.escape(self.game.name)}, change one graphics setting "
+            f"(resolution is a good one), apply it, then <b>quit the game</b>: many games only "
+            f"save their settings when they close.<br>"
+            f"3. Come back and click <b>I've changed a setting</b>.")
+        self.action.setText("Start")
+
+    def _run(self, fn, then) -> None:
+        self.action.setEnabled(False)
+        if self.synchronous:
+            then(fn())
+            return
+        self._worker = ScanWorker(fn, self)
+        self._worker.finished_scan.connect(then)
+        self._worker.start()
+
+    def _next(self) -> None:
+        if self.step == "intro":
+            self.text.setText("Taking a first look…")
+            self._run(self.scan_fn, self._got_before)
+        elif self.step == "waiting":
+            self.text.setText("Looking for what changed…")
+            self._run(self.scan_fn, self._got_after)
+        elif self.step == "results":
+            self.accept()
+
+    def _got_before(self, result) -> None:
+        self.action.setEnabled(True)
+        if isinstance(result, Exception):
+            self.text.setText(f"Couldn't scan: {html.escape(str(result))}")
+            self.step = "intro"
+            return
+        self.before = result
+        self.step = "waiting"
+        self.text.setText(
+            f"<b>Ready.</b> Now start {html.escape(self.game.name)}, change one graphics "
+            "setting, apply it and quit the game. Then click <b>I've changed a setting</b>.")
+        self.action.setText("I've changed a setting")
+
+    def _got_after(self, result) -> None:
+        self.action.setEnabled(True)
+        if isinstance(result, Exception):
+            self.text.setText(f"Couldn't scan: {html.escape(str(result))}")
+            return
+        self.found = self.suggest_fn(self.before, result)
+        if not self.found:
+            self.text.setText(
+                "<b>Nothing changed yet.</b> Make sure the setting was applied and the game "
+                "was closed, then click <b>Look again</b>.")
+            self.action.setText("Look again")
+            return
+        self.step = "results"
+        n = sum(1 for f in self.found if f.likely)
+        self.text.setText(
+            f"<b>Found {len(self.found)} change(s).</b> The {n} ticked one(s) look like "
+            f"{html.escape(self.game.name)}'s settings. Other programs also write files while "
+            "you play, so check the list before adding.")
+        self.list.clear()
+        for f in self.found:
+            icon = "🔑 " if f.location.kind == LocationKind.REGISTRY else "📄 "
+            item = QListWidgetItem(f"{icon}{_short(f.location.path)}\n    {f.reason}")
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if f.likely else Qt.CheckState.Unchecked)
+            item.setToolTip(f.location.path)
+            self.list.addItem(item)
+        self.list.setVisible(True)
+        self.action.setText("Add ticked")
+
+    def chosen(self):
+        return [self.found[i].location for i in range(self.list.count())
+                if self.list.item(i).checkState() == Qt.CheckState.Checked]
+
+
 class PatternsDialog(QDialog):
     def __init__(self, parent: QWidget, loc: ConfigLocation) -> None:
         super().__init__(parent)
@@ -586,7 +710,11 @@ class DetailPanel(QWidget):
         row.addStretch()
         v.addLayout(row)
         row2 = QHBoxLayout()
-        for b in (add_reg, patterns, remove_loc):
+        learn = QPushButton("Learn…")
+        learn.setToolTip("Find the settings by watching what changes while you change one in "
+                         "the game")
+        learn.clicked.connect(lambda: self.window.learn(game))
+        for b in (add_reg, learn, patterns, remove_loc):
             row2.addWidget(b)
         row2.addStretch()
         v.addLayout(row2)
@@ -1098,7 +1226,8 @@ class MainWindow(QMainWindow):
             where = ("isn't in the game config database, and " if self.state.usable_manifest()
                      else "")
             self.inform(title, f"{game.name} {where}doesn't use an engine RigSwap recognises. "
-                        "Add its config file or folder by hand.")
+                        "Try Learn…: it finds the settings by watching what changes while you "
+                        "change one in the game.")
             return
         from rigswap.core import detect as detect_mod
 
@@ -1200,6 +1329,19 @@ class MainWindow(QMainWindow):
         ok, _ = self._try("Add config location", lambda: self.state.add_location(game, loc))
         if ok and kind == LocationKind.DIRECTORY:
             self.edit_patterns(game, len(game.config_locations) - 1)
+
+    def learn(self, game: Game) -> None:
+        from rigswap.core import learn as learn_mod
+
+        dialog = LearnDialog(self, game, lambda: learn_mod.scan(game),
+                             lambda before, after: learn_mod.suggestions(game, before, after))
+        if not self.run_dialog(dialog):
+            return
+        chosen = dialog.chosen()
+        if chosen and self._try("Learn", lambda: self.state.add_locations(game, chosen))[0]:
+            self.statusBar().showMessage(
+                f"Added {len(chosen)} config location(s) to {game.name}. Save each setup to "
+                "start using them.", 8000)
 
     def add_registry_key(self, game: Game) -> None:
         from rigswap.core import detect, registry

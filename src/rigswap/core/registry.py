@@ -90,6 +90,23 @@ class WindowsRegistry:
         except OSError:
             return False
 
+    def subkeys(self, key: str) -> list[str]:
+        """Names of the key's direct sub-keys (empty if the key doesn't exist)."""
+        hive, sub = parse_key(key)
+        names: list[str] = []
+        try:
+            with self.w.OpenKey(self._hive(hive), sub) as k:
+                i = 0
+                while True:
+                    try:
+                        names.append(self.w.EnumKey(k, i))
+                    except OSError:
+                        break
+                    i += 1
+        except OSError:
+            return []
+        return names
+
     def read(self, key: str) -> Tree | None:
         hive, sub = parse_key(key)
         tree: Tree = {}

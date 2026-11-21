@@ -37,7 +37,8 @@ RigSwap saves each game's settings once for each setup. Pick a setup, or just pl
 - **Imports from your launchers.** Steam, Epic Games and GOG on Windows, plus Windows' own list of recognised games; Steam, Heroic (GOG, Epic, Amazon) and Lutris on Linux, including Flatpak installs and the Proton or Wine prefixes games run in.
 - **Finds config files for you.** RigSwap recognises Unreal Engine, Unity and Source games by itself, and can also look games up in a free, community-maintained database of where more than 12,000 games keep their settings (the [Ludusavi manifest](https://github.com/mtkennerly/ludusavi-manifest), built from [PCGamingWiki](https://www.pcgamingwiki.com/)).
 - **Files, folders and registry keys.** A game's config can be a file, several files, a whole folder or a registry key, the way many Unity games store their settings, on Windows and inside Proton or Wine prefixes.
-- **Works with any game.** Anything else can be added by hand.
+- **Learns where unknown games keep their settings.** For a game nothing else recognises, **Learn…** watches what changes while you change one setting in the game, and offers exactly those files or registry values.
+- **Works with any game.** Anything can also be added by hand.
 
 ### Safety
 
@@ -76,7 +77,7 @@ Once the app is open:
 
 1. **Add your setups** with the **+** button, for example `Handheld` and `eGPU Dock`.
 2. **Import your games** with **Import games**, or use **Add game…** for anything else. RigSwap finds each game's config files as it imports them (it asks once before downloading the game database).
-3. **Check what it found** in the details panel. For games it couldn't place, use **Find automatically**, or **Add file…**, **Add folder…** or **Add registry key…**.
+3. **Check what it found** in the details panel. For games it couldn't place, use **Find automatically** or **Learn…**, or add files, folders or registry keys by hand.
 4. **Save each setup.** Set the game up for one setup, then click **Save current** next to that setup. Repeat for the next one.
 5. **Switch.** Click a setup at the top and every game is updated.
 6. **Optional: switch automatically.** Right-click a setup, choose **Use automatically when…** (for example, *External GPU: Connected* for your dock), then turn on **Auto-switch**.
@@ -89,6 +90,7 @@ Everything in the app also works from the `rigswap` command, which is handy for 
 rigswap setup add "Handheld"
 rigswap import                                        # add installed games from every launcher
 rigswap detect --all --add                            # find config files for every game
+rigswap learn "Hollow Knight"                         # find settings by watching what changes
 rigswap game add "Elden Ring" --exe eldenring.exe     # or add any game by hand
 rigswap config add "Elden Ring" "%APPDATA%\EldenRing" --include "*.xml"
 rigswap config add "Valheim" "HKCU\Software\IronGate\Valheim" --registry --exclude "*Save*"
@@ -119,7 +121,7 @@ Set `RIGSWAP_DATA_DIR` to use a different folder.
 - [x] **Phase 1:** Manual switching: Steam discovery, safe swapping, desktop app
 - [x] **Phase 2:** Automatic config detection, locked setups and change checks
 - [x] **Phase 3:** Automatic switching when an eGPU is connected or disconnected, or on power and display changes
-- [ ] **Phase 4:** More launchers ✓, registry settings ✓, engine rules ✓, and Learn mode for games nothing else recognises
+- [x] **Phase 4:** More launchers, registry settings, engine rules and Learn mode for games nothing else recognises
 - [ ] **Phase 5:** Installers (Windows installer, AppImage, Flatpak)
 
 See [ROADMAP.md](ROADMAP.md) for details.
@@ -134,7 +136,7 @@ ruff check .        # lint
 
 ```
 src/rigswap/
-  core/        data model, swapping, detection, engine rules, registry, automatic switching
+  core/        data model, swapping, detection, engine rules, Learn mode, registry, auto-switching
   hardware/    what's connected: GPUs, power, displays (Windows and Linux)
   launchers/   finding installed games: Epic, GOG, Game Bar, Heroic, Lutris
   gui/         PySide6 desktop app

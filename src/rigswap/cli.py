@@ -173,6 +173,11 @@ def _parser() -> argparse.ArgumentParser:
     cmd(man_sub, "update", _manifest_update, "download or update it (about 17 MB)")
     cmd(man_sub, "info", _manifest_info, "show whether it's downloaded and how big it is")
 
+    p = cmd(sub, "learn", _learn,
+            "find a game's settings by watching what changes while you change one in the game")
+    p.add_argument("game")
+    p.add_argument("--yes", action="store_true", help="add the likely ones without asking")
+
     p = cmd(sub, "detect", _detect, "find games' config files using the manifest")
     p.add_argument("game", nargs="?", help="omit with --all")
     p.add_argument("--all", action="store_true", help="every game in the library")
@@ -847,3 +852,48 @@ def _detect_new(store, lib, added) -> None:
         if found:
             n += bool(detect.add_detected(lib, g, found))
     print(f"Found config files for {n} of {len(added)} new game(s).")
+
+
+def _learn(args) -> int:
+    from rigswap.core import learn
+
+    store, lib = _open()
+    g = lib.find_game(args.game)
+    print("Scanning where games keep their settings (before)...", flush=True)
+    before = learn.scan(g)
+    print(f"Now start {g.name}, change one graphics setting (resolution is a good one), "
+          "apply it, then quit the game. Many games only save their settings when they close.")
+    input("Press Enter when you've quit the game... ")
+    print("Scanning again (after)...", flush=True)
+    after = learn.scan(g)
+    found = learn.suggestions(g, before, after)
+    if after.partial:
+        print("Note: there were so many files that the scan stopped early.")
+    if not found:
+        print("Nothing changed. Make sure the setting was applied and the game was closed, "
+              "then try again.")
+        return 0
+    for i, s in enumerate(found, 1):
+        mark = "x" if s.likely else " "
+        print(f"{i:>3}. [{mark}] {_kind_word(s.location.kind)}: {s.location.path}  ({s.reason})")
+    if args.yes:
+        chosen = [s for s in found if s.likely]
+    else:
+        answer = input("Add which? Enter = the ticked ones, 'all', 'none', or numbers "
+                       "like '1 3': ").strip().lower()
+        if answer in ("", "y", "yes"):
+            chosen = [s for s in found if s.likely]
+        elif answer == "all":
+            chosen = found
+        elif answer in ("n", "no", "none"):
+            chosen = []
+        else:
+            picks = {int(x) for x in answer.replace(",", " ").split() if x.isdigit()}
+            chosen = [s for i, s in enumerate(found, 1) if i in picks]
+    for s in chosen:
+        lib.add_config_location(g.id, s.location)
+    store.save(lib)
+    print(f"Added {len(chosen)} config location(s) to {g.name}.")
+    if chosen:
+        _warn_stale(lib, g)
+    return 0

@@ -89,9 +89,9 @@ The headless daemon matters for Bazzite and SteamOS-style Game Mode (gamescope),
     - [x] Unreal Engine: `Saved/Config/<Windows|WindowsNoEditor|WinGDK|Linux>/` under the game's AppData, Documents\My Games or install folder (GameUserSettings.ini, Engine.ini, Scalability.ini only)
     - [x] Unity: player preferences in the registry (`HKCU\Software\<Company>\<Game>`, names from `<Game>_Data/app.info`) on Windows and in Wine prefixes, limited to Unity's own display values; native Linux `prefs` holds saves too, so it's explained rather than added
     - [x] Source engine: `<mod>/cfg/video.txt` in the install folder
-  - [ ] Learn mode, for any game nothing else recognises: RigSwap snapshots the usual config places (AppData, LocalLow, Documents, the Proton prefix and, on Windows, the registry), you change one graphics setting in the game, and RigSwap shows which files or keys changed so you can add them in one click
+  - [x] Learn mode, for any game nothing else recognises: RigSwap snapshots the usual config places (AppData, LocalLow, Documents, Saved Games, the install folder, the Proton/Wine prefix, ~/.config and the registry), you change one graphics setting in the game and quit, and RigSwap shows what changed: noise (caches, logs, other apps) is skipped, likely matches are ticked, files are added individually and registry keys only with the changed values
   - [x] Detection order: game config database (if enabled) → engine rules → Learn mode → add by hand; results are merged without duplicates
-  - [ ] Learn mode's results confirm or correct what the database says
+  - [ ] Later: use Learn mode's results to confirm or correct what the database says
   - [x] The game config database stays optional: detection keeps working with it turned off
 
 ### Phase 5: Distribution
