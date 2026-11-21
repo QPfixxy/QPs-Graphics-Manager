@@ -49,7 +49,10 @@ def _parser() -> argparse.ArgumentParser:
         return p
 
     cmd(sub, "info", _info, "show where data is stored and what's in the library")
-    cmd(sub, "gui", _gui, "open the app window")
+    p = cmd(sub, "gui", _gui, "open the app window")
+    p.add_argument("--tray", action="store_true",
+                   help="start minimised to the tray (when automatic switching is on)")
+    cmd(sub, "hardware", _hardware, "show the GPUs, power and displays RigSwap sees")
 
     p = cmd(sub, "steam", _steam, "list installed Steam games")
     p.add_argument("--import", dest="do_import", action="store_true",
@@ -71,6 +74,21 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("name")
     p = cmd(setup_sub, "unlock", _setup_unlock, "unlock a setup")
     p.add_argument("name")
+    p = cmd(setup_sub, "when", _setup_when,
+            "set when a setup is used automatically (all given conditions must hold)")
+    p.add_argument("name")
+    p.add_argument("--external-gpu", choices=["yes", "no", "any"],
+                   help="an external GPU is (or isn't) connected")
+    p.add_argument("--gpu", metavar="TEXT",
+                   help="a connected GPU's name contains TEXT, e.g. 'RTX 4070' ('' to clear)")
+    p.add_argument("--power", choices=["ac", "battery", "any"])
+    p.add_argument("--display", choices=["yes", "no", "any"],
+                   help="an external display is (or isn't) connected")
+    p.add_argument("--clear", action="store_true", help="never switch to it automatically")
+    p = cmd(setup_sub, "move", _setup_move,
+            "change the order setups are checked in (1 = checked first)")
+    p.add_argument("name")
+    p.add_argument("position", type=int)
 
     game = sub.add_parser("game", help="manage games")
     game_sub = game.add_subparsers(dest="action", metavar="ACTION", required=True)
@@ -119,6 +137,16 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("setup")
 
     cmd(sub, "undo", _undo, "put back the configs from before the last switch")
+
+    p = cmd(sub, "autostart", _autostart, "start RigSwap when you log in")
+    p.add_argument("action", choices=["on", "off", "status"])
+    p.add_argument("--headless", action="store_true",
+                   help="Linux: run 'rigswap watch' as a background service instead of the app")
+
+    p = cmd(sub, "watch", _watch,
+            "switch setups automatically when the hardware changes (runs until stopped)")
+    p.add_argument("--interval", type=float, default=3.0, help="seconds between checks")
+    p.add_argument("--once", action="store_true", help="check once and exit")
 
     p = cmd(sub, "restore", _restore,
             "put a game's saved config back (for the active setup unless --setup)")
@@ -174,7 +202,20 @@ def _active_name(lib: Library) -> str:
 def _gui(args) -> int:
     from rigswap.gui.app import main as gui_main
 
-    return gui_main()
+    return gui_main(["--tray"] if args.tray else [])
+
+
+def _hardware(args) -> int:
+    from rigswap import hardware
+    from rigswap.core import auto
+
+    state = hardware.read_state()
+    for line in state.describe():
+        print(line)
+    _, lib = _open()
+    match = auto.choose_setup(lib, state)
+    print("Matching setup: " + (match.name if match else "none"))
+    return 0
 
 
 def _info(args) -> int:
@@ -616,4 +657,111 @@ def _detect(args) -> int:
         print(f"Added {total_added} config location(s).")
     elif any(detect.new_locations(g, f) for g in games if (f := detect.detect_game(g, man))):
         print("Run again with --add to add the files marked +.")
+    return 0
+
+
+# --- automatic switching -----------------------------------------------------------
+
+
+def _describe_when(setup: Setup) -> str:
+    return setup.when.describe()
+
+
+def _setup_when(args) -> int:
+    from rigswap.core.models import Conditions, Power
+
+    store, lib = _open()
+    setup = _find_setup(lib, args.name)
+    if args.clear:
+        setup.when = Conditions()
+    else:
+        w = setup.when
+        yes_no = {"yes": True, "no": False, "any": None}
+        if args.external_gpu:
+            w.external_gpu = yes_no[args.external_gpu]
+        if args.gpu is not None:
+            w.gpu_name = args.gpu.strip() or None
+        if args.power:
+            w.power = None if args.power == "any" else Power(args.power)
+        if args.display:
+            w.external_display = yes_no[args.display]
+    store.save(lib)
+    print(f"{setup.name} is used automatically when: {_describe_when(setup)}.")
+    return 0
+
+
+def _setup_move(args) -> int:
+    store, lib = _open()
+    setup = _find_setup(lib, args.name)
+    lib.move_setup(setup.id, args.position - 1)
+    store.save(lib)
+    for i, s in enumerate(lib.setups, 1):
+        print(f"{i}. {s.name}: {_describe_when(s)}")
+    return 0
+
+
+def _watch(args) -> int:
+    import time
+
+    from rigswap import hardware
+    from rigswap.core import auto, swap
+
+    store = LibraryStore()
+    lib_box: dict[str, Library] = {}
+
+    def get_library() -> Library:
+        lib_box["lib"] = store.load()  # pick up changes made in the app or other commands
+        return lib_box["lib"]
+
+    def do_switch(setup: Setup) -> swap.SwitchResult:
+        lib = lib_box["lib"]
+        result = swap.switch_setup(store.root, lib, setup.id)
+        store.save(lib)
+        return result
+
+    switcher = auto.AutoSwitcher(get_library, do_switch, hardware.read_state,
+                                 settle_ticks=1 if args.once else 2)
+    lib = get_library()
+    hint = "set some with: rigswap setup when <setup> --external-gpu yes"
+    if not any(not s.when.is_empty() for s in lib.setups):
+        if args.once:
+            raise CliError(f"no setup has conditions yet; {hint}")
+        # Keep running (e.g. as a login service): conditions added later are picked up.
+        print(f"No setup has conditions yet, so nothing will switch until you {hint}.",
+              flush=True)
+    print("Watching hardware (Ctrl+C to stop). Setups, checked in this order:", flush=True)
+    for s in lib.setups:
+        print(f"  {s.name}: {_describe_when(s)}", flush=True)
+    try:
+        while True:
+            event = switcher.tick()
+            if isinstance(event, auto.Switched):
+                r = event.result
+                print(f"Switched to {event.setup.name}: {len(r.applied)} game(s) updated.",
+                      flush=True)
+            elif isinstance(event, auto.Waiting):
+                names = ", ".join(g.name for g in event.games)
+                print(f"Hardware matches {event.setup.name}; waiting for {names} to close.",
+                      flush=True)
+            elif isinstance(event, auto.Failed):
+                print(f"Couldn't switch to {event.setup.name}: {event.error}", flush=True)
+            if args.once:
+                return 0
+            time.sleep(max(0.5, args.interval))
+    except KeyboardInterrupt:
+        print("Stopped.")
+        return 0
+
+
+def _autostart(args) -> int:
+    from rigswap.core import autostart
+
+    if args.action == "status":
+        on = autostart.is_enabled(args.headless)
+        print("Starts at login: " + ("yes" if on else "no"))
+        return 0
+    try:
+        print(autostart.set_enabled(args.action == "on", args.headless))
+    except OSError as e:
+        raise CliError(str(e)) from e
     return 0

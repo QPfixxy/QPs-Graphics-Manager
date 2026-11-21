@@ -28,6 +28,8 @@ from PySide6.QtGui import (
     QStandardItemModel,
 )
 from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -51,13 +53,22 @@ from PySide6.QtWidgets import (
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
 
-from rigswap import __version__
-from rigswap.core import processes, swap
-from rigswap.core.models import ConfigLocation, Game, LibraryError, LocationKind, Setup
+from rigswap import __version__, hardware
+from rigswap.core import auto, processes, swap
+from rigswap.core.models import (
+    Conditions,
+    ConfigLocation,
+    Game,
+    LibraryError,
+    LocationKind,
+    Power,
+    Setup,
+)
 from rigswap.gui import icon_path
 from rigswap.gui.posters import CARD_H, CARD_W, PosterCache
 from rigswap.gui.state import AppState, SnapState
@@ -188,6 +199,80 @@ class GameDialog(QDialog):
         game.install_dir = self.install_dir.text().strip() or None
         game.executables = [e.strip() for e in self.exes.text().split(",") if e.strip()]
         game.poster = self.poster.text().strip() or None
+
+
+class ConditionsDialog(QDialog):
+    """When a setup is switched to automatically, with a live 'matches right now?' line."""
+
+    CHOICES = [("Doesn't matter", None), ("Connected", True), ("Not connected", False)]
+    POWER = [("Doesn't matter", None), ("Plugged in", Power.AC), ("On battery", Power.BATTERY)]
+
+    def __init__(self, parent: QWidget, setup: Setup, state: hardware.HardwareState) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"Use {setup.name} automatically")
+        self.setMinimumWidth(500)
+        self.hw = state
+        form = QFormLayout(self)
+        intro = QLabel(f"Switch to <b>{html.escape(setup.name)}</b> automatically when all of "
+                       "these are true. Setups are checked from left to right, and the first "
+                       "one that matches wins.")
+        intro.setWordWrap(True)
+        form.addRow(intro)
+        w = setup.when
+        self.egpu = self._combo(self.CHOICES, w.external_gpu)
+        self.gpu = QComboBox()
+        self.gpu.setEditable(True)
+        self.gpu.addItem("")
+        for g in state.gpus:
+            self.gpu.addItem(g.name)
+        self.gpu.setCurrentText(w.gpu_name or "")
+        self.gpu.lineEdit().setPlaceholderText("Doesn't matter (or part of a GPU's name)")
+        self.power = self._combo(self.POWER, w.power)
+        self.display = self._combo(self.CHOICES, w.external_display)
+        form.addRow("External GPU", self.egpu)
+        form.addRow("GPU name contains", self.gpu)
+        form.addRow("Power", self.power)
+        form.addRow("External display", self.display)
+        seen = QLabel("Right now RigSwap sees:\n" + "\n".join(f"  {line}"
+                                                              for line in state.describe()))
+        seen.setObjectName("Hint")
+        form.addRow(seen)
+        self.preview = QLabel()
+        form.addRow(self.preview)
+        for combo in (self.egpu, self.power, self.display):
+            combo.currentIndexChanged.connect(self._update)
+        self.gpu.editTextChanged.connect(self._update)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                   | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+        self._update()
+
+    @staticmethod
+    def _combo(choices, current) -> QComboBox:
+        combo = QComboBox()
+        for label, value in choices:
+            combo.addItem(label, value)
+        combo.setCurrentIndex(next(i for i, (_, v) in enumerate(choices) if v == current))
+        return combo
+
+    def conditions(self) -> Conditions:
+        return Conditions(external_gpu=self.egpu.currentData(),
+                          gpu_name=self.gpu.currentText().strip() or None,
+                          power=self.power.currentData(),
+                          external_display=self.display.currentData())
+
+    def _update(self) -> None:
+        c = self.conditions()
+        if c.is_empty():
+            text, kind = "No conditions: this setup is only used when you pick it.", "none"
+        elif auto.matches(c, self.hw):
+            text, kind = "Right now: this matches.", "ok"
+        else:
+            text, kind = "Right now: this doesn't match.", "warn"
+        self.preview.setText(text)
+        self.preview.setStyleSheet(f"color: {STATUS_COLORS[kind].name()};")
 
 
 class PatternsDialog(QDialog):
@@ -588,6 +673,21 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self.statusBar().showMessage(f"RigSwap {__version__} · data in {_short(str(state.root))}")
 
+        # automatic switching
+        self.read_hardware = hardware.read_state  # tests replace this
+        self.switcher = auto.AutoSwitcher(lambda: self.state.lib, self.state.switch,
+                                          lambda: self.read_hardware())
+        self.auto_timer = QTimer(self)
+        self.auto_timer.setInterval(3000)
+        self.auto_timer.timeout.connect(self.auto_tick)
+        self.tray: QSystemTrayIcon | None = None
+        self._told_about_tray = False
+        self._quitting = False
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray = QSystemTrayIcon(QIcon(icon_path("app.png")), self)
+            self.tray.setToolTip("RigSwap")
+            self.tray.activated.connect(self._tray_activated)
+
         state.changed.connect(self.refresh)
         self.refresh()
         QTimer.singleShot(0, self.startup_check)
@@ -614,6 +714,13 @@ class MainWindow(QMainWindow):
         add.clicked.connect(self.add_setup)
         row.addWidget(add)
         row.addStretch()
+        self.auto_button = QPushButton("Auto-switch")
+        self.auto_button.setObjectName("AutoToggle")
+        self.auto_button.setCheckable(True)
+        self.auto_button.setToolTip("Switch setups automatically when the hardware changes "
+                                    "(right-click a setup to set when it's used)")
+        self.auto_button.clicked.connect(lambda checked: self.set_auto_switch(checked))
+        row.addWidget(self.auto_button)
         self.undo_button = QPushButton("Undo switch")
         self.undo_button.clicked.connect(self.undo)
         row.addWidget(self.undo_button)
@@ -642,14 +749,18 @@ class MainWindow(QMainWindow):
             b.setObjectName("SetupButton")
             b.setCheckable(True)
             b.setChecked(setup.id == active)
-            b.setToolTip("Active setup" if setup.id == active
-                         else f"Switch every game to its {setup.name} config")
+            tip = ("Active setup" if setup.id == active
+                   else f"Switch every game to its {setup.name} config")
+            if not setup.when.is_empty():
+                tip += f"\nUsed automatically when {setup.when.describe()}"
+            b.setToolTip(tip + "\nRight-click for more")
             b.clicked.connect(lambda _=False, s=setup: self.switch(s))
             b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             b.customContextMenuRequested.connect(
                 lambda pos, s=setup, btn=b: self._setup_menu(s, btn.mapToGlobal(pos)))
             self.setup_row.addWidget(b)
         self.undo_button.setEnabled(self.state.can_undo())
+        self._sync_auto()
 
         # games
         current = self.detail.game_id
@@ -693,9 +804,22 @@ class MainWindow(QMainWindow):
         lock = QAction("Unlock" if setup.locked else "Lock (never save over it when switching)",
                        menu)
         lock.triggered.connect(lambda: self.set_locked(setup, not setup.locked))
+        when = QAction("Use automatically when…", menu)
+        when.triggered.connect(lambda: self.edit_conditions(setup))
+        index = self.state.lib.setups.index(setup)
+        left = QAction("Move left (checked earlier)", menu)
+        left.setEnabled(index > 0)
+        left.triggered.connect(lambda: self._try("Move setup",
+                                                 lambda: self.state.move_setup(setup, -1)))
+        right = QAction("Move right (checked later)", menu)
+        right.setEnabled(index < len(self.state.lib.setups) - 1)
+        right.triggered.connect(lambda: self._try("Move setup",
+                                                  lambda: self.state.move_setup(setup, 1)))
         remove = QAction("Remove…", menu)
         remove.triggered.connect(lambda: self.remove_setup(setup))
-        menu.addActions([save_all, lock, rename, remove])
+        menu.addActions([when, save_all, lock])
+        menu.addSeparator()
+        menu.addActions([left, right, rename, remove])
         menu.exec(pos)
 
     # --- prompts (tests replace these) -----------------------------------------------
@@ -993,3 +1117,150 @@ class MainWindow(QMainWindow):
             if not self._try("Save configs", lambda g=g: self.state.save_snapshot(g, setup))[0]:
                 return
         self.statusBar().showMessage(f"Saved {len(games)} game(s) for {setup.name}.", 6000)
+
+    # --- automatic switching, tray -------------------------------------------------
+
+    def edit_conditions(self, setup: Setup) -> None:
+        try:
+            state = self.read_hardware()
+        except Exception:
+            state = hardware.HardwareState()
+        dialog = ConditionsDialog(self, setup, state)
+        if self.run_dialog(dialog):
+            when = dialog.conditions()
+            if self._try("Automatic switching", lambda: self.state.set_conditions(setup, when))[0]:
+                self.statusBar().showMessage(
+                    f"{setup.name}: used automatically when {when.describe()}.", 8000)
+                if not when.is_empty() and not self.state.lib.settings.auto_switch and self.ask(
+                        "Automatic switching", "Turn on automatic switching now?"):
+                    self.set_auto_switch(True)
+
+    def set_auto_switch(self, on: bool) -> None:
+        if on and not any(not s.when.is_empty() for s in self.state.lib.setups):
+            self.inform("Automatic switching",
+                        "First tell RigSwap when to use a setup: right-click a setup at the "
+                        "top and choose \"Use automatically when…\".")
+            self.refresh()
+            return
+        if self._try("Automatic switching", lambda: self.state.set_auto_switch(on))[0]:
+            self.statusBar().showMessage(
+                "Automatic switching is on: RigSwap checks the hardware every few seconds."
+                if on else "Automatic switching is off.", 8000)
+            if on:
+                self.auto_tick()
+                if not self.autostart_enabled() and self.ask(
+                        "Start at login", "Start RigSwap in the tray when you log in, so "
+                        "automatic switching always works?"):
+                    self.set_autostart(True)
+
+    def _sync_auto(self) -> None:
+        on = self.state.lib.settings.auto_switch
+        self.auto_button.setChecked(on)
+        if on and not self.auto_timer.isActive():
+            self.auto_timer.start()
+        elif not on and self.auto_timer.isActive():
+            self.auto_timer.stop()
+        if self.tray is not None:
+            self.tray.setContextMenu(self._tray_menu())
+            self.tray.setVisible(on)
+
+    def auto_tick(self) -> None:
+        try:
+            event = self.switcher.tick()
+        except Exception as e:  # never let a hardware read error kill the timer
+            self.statusBar().showMessage(f"Couldn't read the hardware: {e}", 8000)
+            return
+        if isinstance(event, auto.Switched):
+            n = len(event.result.applied)
+            self.notify(f"Switched to {event.setup.name}",
+                        f"The hardware changed, so {n} game(s) now use their "
+                        f"{event.setup.name} settings.")
+        elif isinstance(event, auto.Waiting):
+            names = ", ".join(g.name for g in event.games)
+            self.notify(f"Switching to {event.setup.name} soon",
+                        f"RigSwap will switch when you close {names}.")
+        elif isinstance(event, auto.Failed):
+            self.notify(f"Couldn't switch to {event.setup.name}", str(event.error))
+
+    def notify(self, title: str, message: str) -> None:
+        self.statusBar().showMessage(f"{title}: {message}", 10000)
+        if self.tray is not None and self.tray.isVisible() and not self.isActiveWindow():
+            self.tray.showMessage(title, message, QIcon(icon_path("app.png")), 6000)
+
+    def _tray_menu(self) -> QMenu:
+        menu = QMenu(self)
+        open_action = QAction("Open RigSwap", menu)
+        open_action.triggered.connect(self._show_window)
+        menu.addAction(open_action)
+        menu.addSeparator()
+        active = self.state.lib.settings.active_setup_id
+        for setup in self.state.lib.setups:
+            a = QAction(setup.name, menu)
+            a.setCheckable(True)
+            a.setChecked(setup.id == active)
+            a.triggered.connect(lambda _=False, s=setup: self.switch(s))
+            menu.addAction(a)
+        menu.addSeparator()
+        auto_action = QAction("Auto-switch", menu)
+        auto_action.setCheckable(True)
+        auto_action.setChecked(self.state.lib.settings.auto_switch)
+        auto_action.triggered.connect(lambda checked: self.set_auto_switch(checked))
+        menu.addAction(auto_action)
+        login_action = QAction("Start at login", menu)
+        login_action.setCheckable(True)
+        login_action.setChecked(self.autostart_enabled())
+        login_action.triggered.connect(lambda checked: self.set_autostart(checked))
+        menu.addAction(login_action)
+        quit_action = QAction("Quit RigSwap", menu)
+        quit_action.triggered.connect(self.quit_app)
+        menu.addAction(quit_action)
+        return menu
+
+    def _tray_activated(self, reason) -> None:
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self._show_window()
+
+    def _show_window(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def quit_app(self) -> None:
+        self._quitting = True
+        QApplication.quit()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        """With auto-switch on, closing the window keeps RigSwap running in the tray."""
+        keep_running = (self.state.lib.settings.auto_switch and self.tray is not None
+                        and self.tray.isVisible() and not self._quitting)
+        if keep_running:
+            event.ignore()
+            self.hide()
+            if not self._told_about_tray:
+                self._told_about_tray = True
+                self.tray.showMessage("RigSwap is still running",
+                                      "Automatic switching keeps working in the background. "
+                                      "Use the tray icon to open RigSwap or quit.",
+                                      QIcon(icon_path("app.png")), 6000)
+            return
+        event.accept()
+        QApplication.quit()
+
+    def autostart_enabled(self) -> bool:
+        from rigswap.core import autostart
+
+        try:
+            return autostart.is_enabled()
+        except Exception:
+            return False
+
+    def set_autostart(self, on: bool) -> None:
+        from rigswap.core import autostart
+
+        try:
+            message = autostart.set_enabled(on)
+        except Exception as e:
+            self.warn("Start at login", f"Couldn't change it: {e}")
+            return
+        self.statusBar().showMessage(message, 8000)
+        self._sync_auto()

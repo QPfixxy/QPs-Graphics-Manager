@@ -72,20 +72,91 @@ class ConfigLocation:
         return (not self.include or hit(self.include)) and not hit(self.exclude)
 
 
+class Power(StrEnum):
+    AC = "ac"
+    BATTERY = "battery"
+
+
+@dataclass
+class Conditions:
+    """When a setup should be used automatically. Every condition that is set must hold;
+    unset (None) conditions are ignored. No conditions at all = never automatic."""
+
+    external_gpu: bool | None = None  # True: an external GPU is connected; False: none is
+    gpu_name: str | None = None  # some connected GPU's name contains this (any case)
+    power: Power | None = None
+    external_display: bool | None = None
+
+    def is_empty(self) -> bool:
+        return (self.external_gpu is None and not self.gpu_name and self.power is None
+                and self.external_display is None)
+
+    def describe(self) -> str:
+        parts = []
+        if self.external_gpu is not None:
+            parts.append("an external GPU is "
+                         + ("connected" if self.external_gpu else "not connected"))
+        if self.gpu_name:
+            parts.append(f"a GPU named like '{self.gpu_name}' is connected")
+        if self.power is not None:
+            parts.append("plugged in" if self.power == Power.AC else "on battery")
+        if self.external_display is not None:
+            parts.append("an external display is "
+                         + ("connected" if self.external_display else "not connected"))
+        return " and ".join(parts) if parts else "never (switch by hand)"
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {}
+        if self.external_gpu is not None:
+            d["external_gpu"] = self.external_gpu
+        if self.gpu_name:
+            d["gpu_name"] = self.gpu_name
+        if self.power is not None:
+            d["power"] = self.power.value
+        if self.external_display is not None:
+            d["external_display"] = self.external_display
+        return d
+
+    @classmethod
+    def from_dict(cls, d: Any) -> Conditions:
+        if not isinstance(d, dict):
+            raise LibraryError("setup conditions must be an object")
+
+        def opt_bool(key: str) -> bool | None:
+            v = d.get(key)
+            if v is not None and not isinstance(v, bool):
+                raise LibraryError(f"{key!r} must be true or false")
+            return v
+
+        name = d.get("gpu_name")
+        if name is not None and not isinstance(name, str):
+            raise LibraryError("'gpu_name' must be text")
+        power = d.get("power")
+        return cls(external_gpu=opt_bool("external_gpu"), gpu_name=name or None,
+                   power=Power(power) if power is not None else None,
+                   external_display=opt_bool("external_display"))
+
+
 @dataclass
 class Setup:
     name: str
     # A locked setup's snapshots are never overwritten by "save when switching away".
     locked: bool = False
+    # When to switch to this setup automatically (Phase 3).
+    when: Conditions = field(default_factory=Conditions)
     id: str = field(default_factory=new_id)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "name": self.name, "locked": self.locked}
+        d = {"id": self.id, "name": self.name, "locked": self.locked}
+        if not self.when.is_empty():
+            d["when"] = self.when.to_dict()
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Setup:
         return cls(id=_req_str(d, "id"), name=_req_str(d, "name"),
-                   locked=bool(d.get("locked", False)))
+                   locked=bool(d.get("locked", False)),
+                   when=Conditions.from_dict(d.get("when", {})))
 
 
 @dataclass
@@ -162,17 +233,20 @@ class Settings:
     save_on_switch: bool = True
     # Use the Ludusavi manifest to find config files: None = not asked yet.
     use_manifest: bool | None = None
+    # Switch setups automatically when the hardware changes (Phase 3).
+    auto_switch: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {"active_setup_id": self.active_setup_id, "save_on_switch": self.save_on_switch,
-                "use_manifest": self.use_manifest}
+                "use_manifest": self.use_manifest, "auto_switch": self.auto_switch}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Settings:
         use = d.get("use_manifest")
         return cls(active_setup_id=d.get("active_setup_id"),
                    save_on_switch=bool(d.get("save_on_switch", True)),
-                   use_manifest=use if isinstance(use, bool) else None)
+                   use_manifest=use if isinstance(use, bool) else None,
+                   auto_switch=bool(d.get("auto_switch", False)))
 
 
 @dataclass
@@ -203,6 +277,12 @@ class Library:
     def rename_setup(self, setup_id: str, new_name: str) -> None:
         setup = self.setup(setup_id)
         setup.name = self._check_setup_name(new_name, ignore_id=setup_id)
+
+    def move_setup(self, setup_id: str, index: int) -> None:
+        """Reorder setups; automatic switching checks them from first to last."""
+        setup = self.setup(setup_id)
+        self.setups.remove(setup)
+        self.setups.insert(max(0, min(index, len(self.setups))), setup)
 
     def remove_setup(self, setup_id: str) -> None:
         """Remove a setup and its snapshot records. Deleting the files is the caller's job."""

@@ -208,3 +208,18 @@ class AppState(QObject):
                 if found:
                     added[game.id] = len(detect.add_detected(self.lib, game, found))
         return added
+
+    # --- automatic switching ------------------------------------------------------------
+
+    def set_auto_switch(self, on: bool) -> None:
+        with self._change():
+            self.lib.settings.auto_switch = on
+
+    def set_conditions(self, setup: Setup, when) -> None:
+        with self._change():
+            setup.when = when
+
+    def move_setup(self, setup: Setup, delta: int) -> None:
+        with self._change():
+            index = self.lib.setups.index(setup)
+            self.lib.move_setup(setup.id, index + delta)

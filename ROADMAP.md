@@ -64,15 +64,19 @@ The headless daemon matters for Bazzite and SteamOS-style Game Mode (gamescope),
 - [x] Locked setups: a setup marked as locked is never overwritten by "save when switching away", so a known-good config stays put
 
 ### Phase 3: Automatic switching
-- [ ] eGPU detection that works for any brand or connection (Thunderbolt, USB4, OCuLink):
-  - [ ] Windows: ask Windows whether each display adapter is removable (its device removal policy), instead of matching GPU names
-  - [ ] Linux: read `/sys/class/drm` and the PCI device's `removable` attribute (or whether it sits behind a Thunderbolt/USB4 port); watch for hotplug events with `pyudev`
-- [ ] React to device, display and power changes (on Windows: device-change, display-change and power events); events only mark that something changed, and one loop re-checks everything
-- [ ] Never switch under a running game: if the hardware changes mid-game, wait until the game closes, and say so ("switching to Handheld when you close Elden Ring")
-- [ ] Optional conditions: AC vs. battery, external display
-- [ ] Rules that map conditions to a setup (e.g. "RTX 4070 present → eGPU Dock"), with setups suggested from the GPUs RigSwap detects
-- [ ] No administrator rights needed
-- [ ] Start the daemon at login: systemd user service on Linux, startup task on Windows
+- [x] eGPU detection that works for any brand or connection (Thunderbolt, USB4, OCuLink):
+  - [x] Windows: ask Windows whether each display adapter is removable (its device removal policy), instead of matching GPU names
+  - [x] Linux: read `/sys/class/drm` and the PCI device's `removable` attribute (kernel 5.12+); GPU names from the system's PCI ID list
+  - [ ] Linux fallback for older kernels: whether the GPU sits behind a Thunderbolt/USB4 port
+- [x] One loop re-checks GPUs, power and displays every few seconds, and waits for the hardware to settle before switching
+- [ ] React instantly to OS change events (device, display and power changes) instead of polling
+- [x] Never switch under a running game: if the hardware changes mid-game, wait until the game closes, and say so ("switching to eGPU Dock when you close Elden Ring")
+- [x] Conditions: external GPU connected or not, GPU name, AC vs. battery, external display
+- [x] Rules per setup ("Use automatically when…"), checked in setup order; the editor lists the GPUs RigSwap detects and shows whether the rule matches right now
+- [x] No administrator rights needed
+- [x] Start at login: the app in the tray (Windows Run key, Linux XDG autostart), or `rigswap watch` as a systemd user service for sessions without a tray
+- [x] Tray icon: switch setups, toggle auto-switch, start at login; closing the window keeps auto-switch running
+- [ ] Test on real eGPU hardware (Thunderbolt, USB4 and OCuLink docks)
 
 ### Phase 4: More launchers and harder cases
 - [ ] Heroic (GOG and Epic) and Lutris on Linux

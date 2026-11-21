@@ -27,6 +27,7 @@ RigSwap saves each game's settings once for each setup. Pick a setup and every g
 ## Features
 
 - **Setups, not per-game profiles.** Define setups such as `Handheld`, `eGPU Dock` and `Laptop on Battery` once. Each game keeps one saved config per setup, and switching applies all of them together.
+- **Switches by itself.** Tell each setup when to apply, for example "an external GPU is connected" or "on battery", and RigSwap switches when you dock or undock. It recognises an eGPU from how Windows or Linux reports the device, so any brand or dock works, and it never switches while a game is running: it waits until you close it. Runs in the tray and can start at login, or as a background service on Linux.
 - **Keeps your tweaks.** When you switch away from a setup, the settings you're using are saved back into it, so changes you made while docked are still there next time you dock.
 - **Finds config files for you.** RigSwap looks each game up in the [Ludusavi manifest](https://github.com/mtkennerly/ludusavi-manifest), built from [PCGamingWiki](https://www.pcgamingwiki.com/), which lists where more than 12,000 games keep their settings, including inside Proton prefixes. Folders that also hold saves are only suggested, never added automatically.
 - **Finds your Steam library.** It finds every Steam library on Windows and Linux, including Flatpak Steam, and games running under Proton along with their prefix folders. Posters come from Steam's local artwork cache, or from the custom art you set in Steam.
@@ -74,6 +75,7 @@ Once the app is open:
 3. **Let it find each game's settings.** Imported Steam games are matched automatically (RigSwap asks once before downloading the game database). For other games, click **Find automatically** in the details panel, or use **Add file…** or **Add folder…**.
 4. **Save each setup.** Set the game up for one setup, then click **Save current** next to that setup. Repeat for the next one.
 5. **Switch.** Click a setup at the top and every game is updated.
+6. **Optional: switch automatically.** Right-click a setup, choose **Use automatically when…** (for example, *External GPU: Connected* for your dock), then turn on **Auto-switch**.
 
 ### Command line
 
@@ -88,6 +90,10 @@ rigswap switch "eGPU Dock"                            # apply every game's eGPU 
 rigswap undo                                          # put back the configs from before the last switch
 rigswap detect --all --add                            # find config files for every game
 rigswap status                                        # which games changed since they were saved
+rigswap hardware                                      # what RigSwap sees: GPUs, power, displays
+rigswap setup when "eGPU Dock" --external-gpu yes     # use this setup automatically when docked
+rigswap watch                                         # switch automatically (or turn on Auto-switch in the app)
+rigswap autostart on                                  # start RigSwap when you log in
 ```
 
 Run `rigswap --help` for the full list of commands.
@@ -106,7 +112,7 @@ Set `RIGSWAP_DATA_DIR` to use a different folder.
 - [x] **Phase 0:** Foundation: data model, storage, tests, CI on Windows and Linux
 - [x] **Phase 1:** Manual switching: Steam discovery, safe swapping, desktop app
 - [x] **Phase 2:** Automatic config detection using the [Ludusavi manifest](https://github.com/mtkennerly/ludusavi-manifest), locked setups and change checks
-- [ ] **Phase 3:** Automatic switching when an eGPU is connected or disconnected, or on power and display changes
+- [x] **Phase 3:** Automatic switching when an eGPU is connected or disconnected, or on power and display changes
 - [ ] **Phase 4:** More launchers (Heroic, Lutris, GOG, Epic) and settings stored in the Windows registry
 - [ ] **Phase 5:** Installers (Windows installer, AppImage, Flatpak)
 

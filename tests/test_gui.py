@@ -37,6 +37,10 @@ def env(qtbot, tmp_path, monkeypatch):
     monkeypatch.setattr(window, "run_dialog", lambda d: prompts.next(True))
     monkeypatch.setattr(window, "inform", lambda t, m: prompts.messages.append(("info", m)))
     monkeypatch.setattr(window, "warn", lambda t, m: prompts.messages.append(("warn", m)))
+    # Never touch the real start-at-login settings from tests
+    autostart_calls = []
+    monkeypatch.setattr(window, "autostart_enabled", lambda: True)
+    monkeypatch.setattr(window, "set_autostart", lambda on: autostart_calls.append(on))
 
     class Env:
         pass
@@ -318,3 +322,75 @@ def test_locked_setup_drift_restore_and_startup_check(env):
     env.window.ask = lambda *a: called.append(a) or True
     env.window.startup_check()  # unlocked: drift is expected, no prompt
     assert called == []
+
+
+# --- Phase 3: automatic switching -------------------------------------------------------
+
+def test_conditions_dialog_and_auto_switching(env):
+    from rigswap.core.models import Conditions
+    from rigswap.gui.main_window import ConditionsDialog
+    from rigswap.hardware import Gpu, HardwareState
+
+    hh = env.state.add_setup("Handheld")
+    dock = env.state.add_setup("eGPU Dock")
+    game, cfg = make_game(env, content="720p")
+    env.state.save_snapshot(game, hh)
+    cfg.write_text("4k")
+    env.state.save_snapshot(game, dock)
+    env.window.switch(hh)
+
+    igpu = Gpu("AMD Radeon 780M", "AMD", False)
+    egpu = Gpu("NVIDIA GeForce RTX 4070", "NVIDIA", True)
+    hw_now = {"state": HardwareState(gpus=(igpu,), on_ac=False)}
+    env.window.read_hardware = lambda: hw_now["state"]
+
+    # Auto-switch can't be turned on before any setup has conditions
+    env.window.set_auto_switch(True)
+    assert not env.state.lib.settings.auto_switch
+    assert "Use automatically when" in env.prompts.messages[-1][1]
+
+    # The dialog lists the GPUs it sees and previews whether the rule matches now
+    dialog = ConditionsDialog(env.window, dock, HardwareState(gpus=(igpu, egpu)))
+    assert [dialog.gpu.itemText(i) for i in range(dialog.gpu.count())] == \
+        ["", "AMD Radeon 780M", "NVIDIA GeForce RTX 4070"]
+    dialog.egpu.setCurrentIndex(1)  # Connected
+    assert dialog.preview.text() == "Right now: this matches."
+    dialog.egpu.setCurrentIndex(2)
+    assert dialog.preview.text() == "Right now: this doesn't match."
+    dialog.egpu.setCurrentIndex(0)
+    assert "only used when you pick it" in dialog.preview.text()
+
+    def set_dock_rule(d):
+        d.egpu.setCurrentIndex(1)
+        return True
+
+    env.window.run_dialog = set_dock_rule
+    env.prompts.answers = [True]  # turn on automatic switching now? yes
+    env.window.edit_conditions(dock)
+    assert dock.when == Conditions(external_gpu=True)
+    assert env.state.lib.settings.auto_switch and env.window.auto_button.isChecked()
+    assert env.window.auto_timer.isActive()
+
+    # Plug in the eGPU while the game is running: wait, then switch when it closes
+    env.running.append("Hades")
+    hw_now["state"] = HardwareState(gpus=(igpu, egpu), on_ac=True)
+    env.window.auto_tick()
+    env.window.auto_tick()
+    assert "when you close Hades" in env.window.statusBar().currentMessage()
+    assert cfg.read_text() == "720p"
+    env.running.clear()
+    env.window.auto_tick()
+    assert cfg.read_text() == "4k" and env.state.active_setup().name == "eGPU Dock"
+    assert "Switched to eGPU Dock" in env.window.statusBar().currentMessage()
+
+    env.window.set_auto_switch(False)
+    assert not env.window.auto_timer.isActive()
+
+
+def test_setup_order_can_be_changed(env):
+    a = env.state.add_setup("A")
+    env.state.add_setup("B")
+    env.state.move_setup(a, 1)
+    assert [s.name for s in env.state.lib.setups] == ["B", "A"]
+    buttons = [b.text() for b in env.window.findChildren(QPushButton, "SetupButton")]
+    assert buttons == ["B", "A"]

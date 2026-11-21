@@ -11,7 +11,8 @@ from rigswap.core.models import LibraryError
 from rigswap.gui import icon_path, theme
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = sys.argv[1:] if argv is None else argv
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("RigSwap")
     app.setDesktopFileName("rigswap")
@@ -28,7 +29,9 @@ def main() -> int:
                              f"Your library file can't be read, so nothing was changed.\n\n{e}")
         return 1
     window = MainWindow(state)
-    window.show()
+    # At login (--tray) with automatic switching on, start quietly in the tray.
+    if not ("--tray" in args and window.tray is not None and state.lib.settings.auto_switch):
+        window.show()
     return app.exec()
 
 

@@ -30,6 +30,9 @@ QPushButton#SetupButton {{ border-radius: 15px; padding: 6px 18px; }}
 QPushButton#SetupButton:checked {{
     background: {ACCENT}; border-color: #6a92ff; color: white; font-weight: 600;
 }}
+QPushButton#AutoToggle:checked {{
+    background: #1f6f4a; border-color: #2f9e6a; color: white; font-weight: 600;
+}}
 QPushButton#Round {{ border-radius: 15px; padding: 6px 11px; font-weight: 600; }}
 QLineEdit {{
     background: {PANEL}; border: 1px solid {BORDER}; border-radius: 6px; padding: 6px 8px;
