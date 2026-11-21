@@ -18,7 +18,7 @@ from collections.abc import Iterable, Iterator
 
 import psutil
 
-from rigswap.core.models import Game
+from rigswap.core.models import Game, LocationKind
 
 # (exe, cmdline) for one process.
 ProcInfo = tuple[str | None, list[str]]
@@ -51,6 +51,28 @@ def system_processes() -> Iterator[ProcInfo]:
         yield info.get("exe"), info.get("cmdline") or []
 
 
+def wineserver_prefixes() -> set[str]:
+    """Wine prefixes that have a wineserver running right now (Linux)."""
+    found: set[str] = set()
+    for proc in psutil.process_iter(["name"]):
+        if not (proc.info.get("name") or "").startswith("wineserver"):
+            continue
+        try:
+            env = proc.environ()
+        except (psutil.Error, OSError):
+            continue
+        if env.get("WINEPREFIX"):
+            found.add(_norm(env["WINEPREFIX"]))
+        if env.get("STEAM_COMPAT_DATA_PATH"):
+            found.add(_norm(os.path.join(env["STEAM_COMPAT_DATA_PATH"], "pfx")))
+    return found
+
+
+def _uses_wine_registry(game: Game) -> bool:
+    return bool(game.wine_prefix) and any(loc.kind == LocationKind.REGISTRY
+                                          for loc in game.config_locations)
+
+
 def can_check(game: Game) -> bool:
     return bool(game.install_dir or game.executables)
 
@@ -60,11 +82,23 @@ def _basename(path: str) -> str:
     return re.split(r"[\\/]", path.rstrip("\\/"))[-1].casefold()
 
 
-def running_games(games: Iterable[Game], processes: Iterable[ProcInfo] | None = None) -> list[Game]:
-    """The games in `games` that have a matching process running."""
-    games = [g for g in games if can_check(g)]
+def running_games(games: Iterable[Game], processes: Iterable[ProcInfo] | None = None,
+                  wine_prefixes: set[str] | None = None) -> list[Game]:
+    """The games in `games` that have a matching process running.
+
+    A game whose settings live in its Wine prefix's registry also counts as running
+    while that prefix's wineserver is up: Wine writes its registry files back when it
+    shuts down, which would overwrite a swap.
+    """
+    games = list(games)
+    wine_games = [g for g in games if _uses_wine_registry(g)]
+    busy_wine: list[Game] = []
+    if wine_games:
+        prefixes = wineserver_prefixes() if wine_prefixes is None else wine_prefixes
+        busy_wine = [g for g in wine_games if _norm(g.wine_prefix) in prefixes]
+    games = [g for g in games if can_check(g) and g not in busy_wine]
     if not games:
-        return []
+        return busy_wine
     dirs = {g.id: _norm(g.install_dir) for g in games if g.install_dir}
     full = {g.id: {_norm(e) for e in g.executables if "/" in e or "\\" in e} for g in games}
     names = {g.id: {e.casefold() for e in g.executables if "/" not in e and "\\" not in e}
@@ -82,4 +116,4 @@ def running_games(games: Iterable[Game], processes: Iterable[ProcInfo] | None = 
                     found.add(g.id)
         if len(found) == len(games):
             break
-    return [g for g in games if g.id in found]
+    return busy_wine + [g for g in games if g.id in found]

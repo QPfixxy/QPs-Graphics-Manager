@@ -137,7 +137,11 @@ def fake_windows_home(monkeypatch, tmp_path):
     return home
 
 
-def test_detect_cli(run, fake_windows_home):
+def test_detect_cli(run, fake_windows_home, monkeypatch):
+    from rigswap.core import detect
+
+    # as on a computer without a Windows registry (the test is about the message)
+    monkeypatch.setattr(detect, "registry_backend", lambda game: None)
     gfx = fake_windows_home / "AppData" / "Roaming" / "EldenRing" / "GraphicsConfig.xml"
     gfx.parent.mkdir(parents=True)
     gfx.write_text("x")
@@ -150,7 +154,7 @@ def test_detect_cli(run, fake_windows_home):
     run("game", "add", "Hades")
     code, out = run("detect", "--all")
     assert f"+ file: {gfx}" in out and "also holds saves, not added" in out
-    assert "registry (not supported yet)" in out and "--add" in out
+    assert "can't be swapped on this computer" in out and "--add" in out
     code, out = run("detect", "Elden Ring", "--add")
     assert "Added 1 config location(s)" in out
     code, out = run("game", "show", "Elden Ring")

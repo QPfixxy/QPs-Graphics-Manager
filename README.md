@@ -40,6 +40,7 @@ RigSwap saves each game's settings once for each setup. Pick a setup and every g
   - If anything fails partway through, everything is rolled back.
   - **Undo** puts back the configs from before the last switch.
 - **Locked setups and change checks.** Lock a setup so switching away never saves over it. RigSwap shows when a game's settings changed since they were saved (a game update or cloud sync can do that) and can put the saved copy back.
+- **Registry settings too.** Many Unity games keep their graphics settings in the Windows registry. RigSwap swaps those keys as safely as files, on Windows and inside Proton or Wine prefixes on Linux.
 - **Protects your saves.** Some games keep save files in their config folder. Include and exclude patterns keep saves out of the snapshots, and switching never deletes files.
 - **Desktop app and command line.** Everything in the app also works from the `rigswap` command, which is handy for scripts and for gaming modes without a desktop.
 

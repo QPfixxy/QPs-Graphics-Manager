@@ -37,6 +37,7 @@ def _now() -> datetime:
 class LocationKind(StrEnum):
     FILE = "file"
     DIRECTORY = "directory"
+    REGISTRY = "registry"  # a registry key (Windows, or inside the game's Wine prefix)
 
 
 @dataclass

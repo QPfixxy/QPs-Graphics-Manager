@@ -344,23 +344,32 @@ class ImportDialog(QDialog):
 class PatternsDialog(QDialog):
     def __init__(self, parent: QWidget, loc: ConfigLocation) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Which files in this folder?")
+        is_reg = loc.kind == LocationKind.REGISTRY
+        self.setWindowTitle("Which values in this key?" if is_reg
+                            else "Which files in this folder?")
         self.setMinimumWidth(480)
         form = QFormLayout(self)
         shown = html.escape(_short(loc.path))
-        label = QLabel(f"<b>{shown}</b><br>Patterns are matched against each file's path "
-                       "inside the folder, e.g. <code>*.ini</code> or <code>saves/*</code>. "
-                       "Leave Include empty to take every file.")
+        if is_reg:
+            text = ("Patterns are matched against each value's name, with sub-keys written "
+                    "like folders, e.g. <code>*Resolution*</code> or <code>Graphics/*</code>. "
+                    "Leave Include empty to take every value.")
+        else:
+            text = ("Patterns are matched against each file's path inside the folder, e.g. "
+                    "<code>*.ini</code> or <code>saves/*</code>. Leave Include empty to take "
+                    "every file.")
+        label = QLabel(f"<b>{shown}</b><br>{text}")
         label.setWordWrap(True)
         form.addRow(label)
         self.include = QLineEdit(", ".join(loc.include))
-        self.include.setPlaceholderText("all files")
+        self.include.setPlaceholderText("all values" if is_reg else "all files")
         self.exclude = QLineEdit(", ".join(loc.exclude))
-        self.exclude.setPlaceholderText("e.g. saves/*, *.sav")
+        self.exclude.setPlaceholderText("e.g. *Save*, *Progress*" if is_reg
+                                        else "e.g. saves/*, *.sav")
         form.addRow("Include", self.include)
         form.addRow("Exclude", self.exclude)
-        warn = QLabel("Exclude save files: anything included is put back to its saved "
-                      "version on every switch.")
+        warn = QLabel("Exclude saves: anything included is put back to its saved version on "
+                      "every switch.")
         warn.setWordWrap(True)
         warn.setObjectName("Hint")
         form.addRow(warn)
@@ -534,13 +543,15 @@ class DetailPanel(QWidget):
         metrics = self.locations.fontMetrics()
         for loc in game.config_locations:
             shown = metrics.elidedText(_short(loc.path), Qt.TextElideMode.ElideMiddle, 300)
-            text = ("📁 " if loc.kind == LocationKind.DIRECTORY else "📄 ") + shown
+            icon = {LocationKind.DIRECTORY: "📁 ",
+                    LocationKind.REGISTRY: "🔑 "}.get(loc.kind, "📄 ")
+            text = icon + shown
             extra = []
             if loc.include:
                 extra.append("only " + ", ".join(loc.include))
             if loc.exclude:
                 extra.append("not " + ", ".join(loc.exclude))
-            if not Path(loc.path).exists():
+            if loc.kind != LocationKind.REGISTRY and not Path(loc.path).exists():
                 extra.append("doesn't exist yet")
             if extra:
                 text += "\n    " + " · ".join(extra)
@@ -557,7 +568,11 @@ class DetailPanel(QWidget):
         add_file.clicked.connect(lambda: self.window.add_location(game, LocationKind.FILE))
         add_dir = QPushButton("Add folder…")
         add_dir.clicked.connect(lambda: self.window.add_location(game, LocationKind.DIRECTORY))
-        patterns = QPushButton("Files…")
+        patterns = QPushButton("Choose files…")
+        add_reg = QPushButton("Add registry key…")
+        add_reg.setToolTip("For games that keep settings in the Windows registry (common for "
+                           "Unity games), including inside a Proton or Wine prefix")
+        add_reg.clicked.connect(lambda: self.window.add_registry_key(game))
         patterns.setToolTip("Choose which files in a folder belong to the config")
         remove_loc = QPushButton("Remove")
         find = QPushButton("Find automatically")
@@ -569,7 +584,7 @@ class DetailPanel(QWidget):
         row.addStretch()
         v.addLayout(row)
         row2 = QHBoxLayout()
-        for b in (patterns, remove_loc):
+        for b in (add_reg, patterns, remove_loc):
             row2.addWidget(b)
         row2.addStretch()
         v.addLayout(row2)
@@ -580,7 +595,10 @@ class DetailPanel(QWidget):
         def update_buttons() -> None:
             i = selected_index()
             remove_loc.setEnabled(i >= 0)
-            patterns.setEnabled(i >= 0 and game.config_locations[i].kind == LocationKind.DIRECTORY)
+            kind = game.config_locations[i].kind if i >= 0 else None
+            patterns.setEnabled(kind in (LocationKind.DIRECTORY, LocationKind.REGISTRY))
+            patterns.setText("Choose values…" if kind == LocationKind.REGISTRY
+                             else "Choose files…")
 
         self.locations.currentRowChanged.connect(lambda _: update_buttons())
         patterns.clicked.connect(lambda: self.window.edit_patterns(game, selected_index()))
@@ -1085,9 +1103,10 @@ class MainWindow(QMainWindow):
             lines.append("Not there yet (launch the game once, then try again):\n"
                          + "\n".join(f"• {_short(p)}" for p in found.missing))
         if found.registry:
-            lines.append("Some settings are kept in the Windows registry, which RigSwap "
-                         "can't swap yet:\n" + "\n".join(f"• {k}" for k in found.registry))
-        if not lines and not found.mixed:
+            lines.append("Some settings are kept in the Windows registry, which can't be "
+                         "swapped on this computer:\n"
+                         + "\n".join(f"• {k}" for k in found.registry))
+        if not lines and not found.mixed and not found.mixed_registry:
             lines.append("The database has no config files for this game on this system.")
         if lines:
             self.inform(title, "\n\n".join(lines))
@@ -1099,6 +1118,15 @@ class MainWindow(QMainWindow):
                         f"{_short(path)}\n\nAdd it anyway? You'll choose which files count, "
                         "so saves can be left out."):
                 loc = ConfigLocation(path, LocationKind.DIRECTORY)
+                if self._try(title, lambda loc=loc: self.state.add_locations(game, [loc]))[0]:
+                    self.edit_patterns(game, len(game.config_locations) - 1)
+        for key in found.mixed_registry:
+            if any(loc.path.casefold() == key.casefold() for loc in game.config_locations):
+                continue
+            if self.ask(title, f"This registry key holds settings and saves together:\n\n"
+                        f"{key}\n\nAdd it anyway? You'll choose which values count, so "
+                        "saves can be left out."):
+                loc = ConfigLocation(key, LocationKind.REGISTRY)
                 if self._try(title, lambda loc=loc: self.state.add_locations(game, [loc]))[0]:
                     self.edit_patterns(game, len(game.config_locations) - 1)
 
@@ -1157,6 +1185,27 @@ class MainWindow(QMainWindow):
         loc = ConfigLocation(str(Path(path)), kind)
         ok, _ = self._try("Add config location", lambda: self.state.add_location(game, loc))
         if ok and kind == LocationKind.DIRECTORY:
+            self.edit_patterns(game, len(game.config_locations) - 1)
+
+    def add_registry_key(self, game: Game) -> None:
+        from rigswap.core import detect, registry
+
+        if detect.registry_backend(game) is None:
+            self.inform("Add registry key", f"{game.name} has no registry on this computer. "
+                        "Registry keys work on Windows, or for games that run in a Proton or "
+                        "Wine prefix.")
+            return
+        text = self.get_text("Add registry key", "Registry key, e.g. "
+                             "HKEY_CURRENT_USER\\Software\\Company\\Game:")
+        if not text:
+            return
+        try:
+            key = registry.normalize_key(text)
+        except registry.RegistryError as e:
+            self.warn("Add registry key", str(e))
+            return
+        loc = ConfigLocation(key, LocationKind.REGISTRY)
+        if self._try("Add registry key", lambda: self.state.add_location(game, loc))[0]:
             self.edit_patterns(game, len(game.config_locations) - 1)
 
     def edit_patterns(self, game: Game, index: int) -> None:

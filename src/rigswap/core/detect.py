@@ -23,6 +23,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rigswap.core import registry
 from rigswap.core.manifest import Manifest, ManifestGame
 from rigswap.core.models import ConfigLocation, Game, Library, LocationKind
 
@@ -46,6 +47,9 @@ class Detection:
     found: list[ConfigLocation] = field(default_factory=list)
     # tagged config AND save: folders that also hold saves
     mixed: list[str] = field(default_factory=list)
+    # registry keys that hold settings and saves together
+    mixed_registry: list[str] = field(default_factory=list)
+    # registry keys that can't be swapped on this system (no Windows registry or prefix)
     registry: list[str] = field(default_factory=list)
     # config paths that apply here but don't exist yet (e.g. game never launched)
     missing: list[str] = field(default_factory=list)
@@ -224,7 +228,7 @@ def _true_case(path: Path) -> Path:
 # --- detection ------------------------------------------------------------------------
 
 
-def detect(game: Game, entry: ManifestGame, ctx: Context) -> Detection:
+def detect(game: Game, entry: ManifestGame, ctx: Context, reg_backend=None) -> Detection:
     result = Detection(manifest_name=entry.name)
     seen: set[str] = set()
     for rule in entry.files:
@@ -248,9 +252,23 @@ def detect(game: Game, entry: ManifestGame, ctx: Context) -> Detection:
             kind = LocationKind.DIRECTORY if hit.is_dir() else LocationKind.FILE
             result.found.append(ConfigLocation(str(hit), kind))
     result.found = _drop_nested(result.found)
+    if ctx.os_name != "windows":
+        return result  # native Linux/Mac builds don't keep settings in a registry
     for rule in entry.registry:
-        if rule.applies(ctx.os_name, ctx.store):
-            result.registry.append(rule.path.replace("/", "\\"))
+        if not rule.applies(ctx.os_name, ctx.store):
+            continue
+        try:
+            key = registry.normalize_key(rule.path)
+        except registry.RegistryError:
+            continue  # a hive RigSwap doesn't handle
+        if reg_backend is None:
+            result.registry.append(key)
+        elif not reg_backend.exists(key):
+            result.missing.append(key)
+        elif rule.config_only:
+            result.found.append(ConfigLocation(key, LocationKind.REGISTRY))
+        else:
+            result.mixed_registry.append(key)
     return result
 
 
@@ -266,12 +284,19 @@ def _drop_nested(locations: list[ConfigLocation]) -> list[ConfigLocation]:
     return keep
 
 
+def _key(loc: ConfigLocation) -> str:
+    """Compare paths the way the OS does; registry keys are never case-sensitive."""
+    if loc.kind == LocationKind.REGISTRY:
+        return loc.path.casefold()
+    return os.path.normcase(loc.path)
+
+
 def new_locations(game: Game, detection: Detection) -> list[ConfigLocation]:
     """Found locations the game doesn't already have (or sit inside one it has)."""
-    have = [(os.path.normcase(loc.path), loc.kind) for loc in game.config_locations]
+    have = [(_key(loc), loc.kind) for loc in game.config_locations]
     out = []
     for loc in detection.found:
-        p = os.path.normcase(loc.path)
+        p = _key(loc)
         if any(p == h or (kind == LocationKind.DIRECTORY and p.startswith(h + os.sep))
                for h, kind in have):
             continue
@@ -285,7 +310,15 @@ def detect_game(game: Game, man: Manifest, ctx: Context | None = None) -> Detect
                      install_dir=game.install_dir)
     if entry is None:
         return None
-    return detect(game, entry, ctx or context_for(game))
+    return detect(game, entry, ctx or context_for(game), registry_backend(game))
+
+
+def registry_backend(game: Game):
+    """The registry this game's settings would live in here, or None if there isn't one."""
+    try:
+        return registry.backend_for(game.wine_prefix, sys.platform)
+    except (registry.RegistryError, ImportError):
+        return None
 
 
 def add_detected(lib: Library, game: Game, detection: Detection) -> list[ConfigLocation]:

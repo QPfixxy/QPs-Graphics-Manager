@@ -119,17 +119,23 @@ def _parser() -> argparse.ArgumentParser:
 
     config = sub.add_parser("config", help="manage a game's config files and folders")
     config_sub = config.add_subparsers(dest="action", metavar="ACTION", required=True)
-    p = cmd(config_sub, "add", _config_add, "add a config file or folder to a game")
+    p = cmd(config_sub, "add", _config_add,
+            "add a config file, folder or registry key to a game")
     p.add_argument("game")
-    p.add_argument("path")
+    p.add_argument("path", help="a file or folder, or with --registry a key such as "
+                                "HKCU\\Software\\Company\\Game")
     kind = p.add_mutually_exclusive_group()
+    kind.add_argument("--registry", action="store_true",
+                      help="it's a registry key (Windows, or inside the game's Wine prefix)")
     kind.add_argument("--file", action="store_true",
                       help="it's a file (needed if it doesn't exist yet)")
     kind.add_argument("--folder", action="store_true", help="it's a folder")
     p.add_argument("--include", action="append", default=[], metavar="GLOB",
-                   help="folders only: just these files, e.g. '*.ini' (repeatable)")
+                   help="folders and registry keys only: just these files or values, "
+                        "e.g. '*.ini' (repeatable)")
     p.add_argument("--exclude", action="append", default=[], metavar="GLOB",
-                   help="folders only: never these files, e.g. 'saves/*' (repeatable)")
+                   help="folders and registry keys only: never these, e.g. 'saves/*' "
+                        "(repeatable)")
     p = cmd(config_sub, "remove", _config_remove,
             "remove a config location (its number from rigswap game show)")
     p.add_argument("game")
@@ -195,7 +201,8 @@ def _abspath(path: str) -> str:
 
 
 def _kind_word(kind: LocationKind) -> str:
-    return "folder" if kind == LocationKind.DIRECTORY else "file"
+    return {LocationKind.DIRECTORY: "folder", LocationKind.REGISTRY: "registry key"}.get(
+        kind, "file")
 
 
 def _active_name(lib: Library) -> str:
@@ -360,7 +367,7 @@ def _game_show(args) -> int:
     print("  Config locations:" + ("" if g.config_locations else " none"))
     for n, loc in enumerate(g.config_locations, 1):
         line = f"    {n}. [{_kind_word(loc.kind)}] {loc.path}"
-        if not Path(loc.path).exists():
+        if loc.kind != LocationKind.REGISTRY and not Path(loc.path).exists():
             line += "  (doesn't exist yet)"
         if loc.include:
             line += f"  include {', '.join(loc.include)}"
@@ -417,6 +424,25 @@ def _game_remove(args) -> int:
 def _config_add(args) -> int:
     store, lib = _open()
     g = lib.find_game(args.game)
+    if args.registry:
+        from rigswap.core import detect, registry
+
+        try:
+            key = registry.normalize_key(args.path)
+        except registry.RegistryError as e:
+            raise CliError(str(e)) from e
+        backend = detect.registry_backend(g)
+        if backend is None:
+            raise CliError(f"{g.name} has no registry here: registry keys work on Windows, "
+                           "or for games that run in a Wine/Proton prefix")
+        loc = ConfigLocation(key, LocationKind.REGISTRY, include=args.include,
+                             exclude=args.exclude)
+        lib.add_config_location(g.id, loc)
+        store.save(lib)
+        note = "" if backend.exists(key) else " (it doesn't exist yet)"
+        print(f"Added registry key {key} to {g.name}{note}.")
+        _warn_stale(lib, g)
+        return 0
     path = Path(_abspath(args.path))
     if args.folder:
         kind = LocationKind.DIRECTORY
@@ -633,18 +659,20 @@ def _detect(args) -> int:
                 print(f"{g.name}: not in the database. Add its config files by hand.")
             continue
         new = detect.new_locations(g, found)
-        if not (new or found.mixed or found.registry or found.missing) and args.all:
+        if not (new or found.mixed or found.mixed_registry or found.registry
+                or found.missing) and args.all:
             continue
         print(f"{g.name}  (database entry: {found.manifest_name})")
         for loc in new:
             print(f"  + {_kind_word(loc.kind)}: {loc.path}")
-        for path in found.mixed:
+        for path in [*found.mixed, *found.mixed_registry]:
             print(f"  ? also holds saves, not added: {path}")
         for key in found.registry:
-            print(f"  ! settings in the registry (not supported yet): {key}")
+            print(f"  ! settings in the registry, which can't be swapped on this computer: "
+                  f"{key}")
         for path in found.missing:
             print(f"  - not there yet (launch the game once): {path}")
-        if not new and not found.mixed:
+        if not new and not found.mixed and not found.mixed_registry:
             print("  nothing new to add")
         if args.add and new:
             detect.add_detected(lib, g, found)

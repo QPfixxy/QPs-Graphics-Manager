@@ -235,6 +235,8 @@ def with_db(env, monkeypatch):
         then()
 
     monkeypatch.setattr(env.window, "download_manifest", fake_download)
+    # as on a computer without a Windows registry, whatever OS the tests run on
+    monkeypatch.setattr(detect, "registry_backend", lambda game: None)
     env.home, env.downloads = home, downloads
     return env
 

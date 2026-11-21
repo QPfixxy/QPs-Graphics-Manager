@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -33,7 +34,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from rigswap.core import paths, processes
+from rigswap.core import paths, processes, registry
 from rigswap.core.fsutil import atomic_copy, atomic_write_text, rmtree
 from rigswap.core.models import Game, Library, LocationKind, Setup, Snapshot
 
@@ -111,12 +112,49 @@ def _write_snapshot(root: Path, game: Game, setup_id: str) -> None:
     rmtree(old)
 
 
+REGISTRY_FILE = "registry.json"
+
+
+@dataclass
+class _RegOp:
+    key: str
+    subkey: str
+    name: str
+    value: dict[str, Any]
+
+
+@dataclass
+class _Plan:
+    files: list[tuple[Path, Path]]  # (snapshot file, live target)
+    registry: list[_RegOp]
+
+
+def _backend(game: Game):
+    return registry.backend_for(game.wine_prefix, sys.platform)
+
+
 def _capture(game: Game, dest: Path) -> None:
     dest.mkdir(parents=True)
     entries = []
     for i, loc in enumerate(game.config_locations):
         live = Path(loc.path)
         slot = dest / f"loc{i}"
+        if loc.kind == LocationKind.REGISTRY:
+            try:
+                backend = _backend(game)
+                tree = backend.read(loc.path)
+            except registry.RegistryError as e:
+                raise SwapError(str(e)) from e
+            present = tree is not None
+            if present:
+                kept = {sub: {name: v for name, v in values.items()
+                              if loc.matches(registry.value_path(sub, name))}
+                        for sub, values in tree.items()}
+                slot.mkdir()
+                atomic_write_text(slot / REGISTRY_FILE, json.dumps(
+                    {"backend": backend.kind, "tree": kept}, indent=2))
+            entries.append({**loc.to_dict(), "present": present})
+            continue
         if loc.kind == LocationKind.FILE:
             if live.exists() and not live.is_file():
                 raise SwapError(f"{live} should be a file but isn't")
@@ -164,27 +202,43 @@ def can_undo(root: Path) -> bool:
     return bool(_ops(root))
 
 
-def _plan(game: Game, snap_dir: Path) -> list[tuple[Path, Path]]:
-    """(snapshot file, live target) pairs that applying this snapshot will write."""
+def _plan(game: Game, snap_dir: Path) -> _Plan:
+    """What applying this snapshot will write: files to copy and registry values to set."""
     entries = _read_capture(snap_dir)
     if not _matches(entries, game):
         raise SnapshotMismatchError(
             f"{game.name}'s config locations changed since this snapshot was saved; "
             "save it again"
         )
-    pairs = []
+    plan = _Plan(files=[], registry=[])
     for i, e in enumerate(entries):
         if not e["present"]:
             continue  # nothing was there when saved: leave the live side alone
-        live = Path(e["path"])
         slot = snap_dir / f"loc{i}"
+        if e["kind"] == LocationKind.REGISTRY.value:
+            try:
+                saved = json.loads((slot / REGISTRY_FILE).read_text(encoding="utf-8"))
+                backend = _backend(game)
+            except (OSError, ValueError) as err:
+                raise SwapError(f"snapshot in {snap_dir} is unreadable: {err}") from err
+            except registry.RegistryError as err:
+                raise SnapshotMismatchError(str(err)) from err
+            if saved.get("backend") != backend.kind:
+                raise SnapshotMismatchError(
+                    f"{game.name}'s registry snapshot was saved from a different registry "
+                    "(Windows vs. a Wine prefix); save it again")
+            for sub, values in saved.get("tree", {}).items():
+                for name, value in values.items():
+                    plan.registry.append(_RegOp(e["path"], sub, name, value))
+            continue
+        live = Path(e["path"])
         if e["kind"] == LocationKind.FILE.value:
-            pairs.append((slot / live.name, live))
+            plan.files.append((slot / live.name, live))
         else:
             for src in sorted(slot.rglob("*")):
                 if src.is_file() and not src.is_symlink():
-                    pairs.append((src, live / src.relative_to(slot)))
-    return pairs
+                    plan.files.append((src, live / src.relative_to(slot)))
+    return plan
 
 
 # --- applying with backup -------------------------------------------------------
@@ -192,20 +246,37 @@ def _plan(game: Game, snap_dir: Path) -> list[tuple[Path, Path]]:
 
 def _apply(game: Game, snap_dir: Path, backup_dir: Path) -> None:
     """Back up what will be overwritten, then write the snapshot over the live config."""
-    pairs = _plan(game, snap_dir)
+    plan = _plan(game, snap_dir)
     files_dir = backup_dir / "files"
     files_dir.mkdir(parents=True)
-    records = []
-    for n, (_, target) in enumerate(pairs):
+    records: list[dict[str, Any]] = []
+    for n, (_, target) in enumerate(plan.files):
         if target.is_file():
             backup_name = f"files/{n}"
             shutil.copy2(target, backup_dir / backup_name)
         else:
             backup_name = None  # created by this apply; undo deletes it
         records.append({"target": str(target), "backup": backup_name})
+    backend = _backend(game) if plan.registry else None
+    current: dict[str, registry.Tree] = {}
+    for op in plan.registry:
+        if op.key not in current:
+            current[op.key] = backend.read(op.key) or {}
+        before = current[op.key].get(op.subkey, {}).get(op.name)
+        records.append({"registry": op.key, "backend": backend.kind,
+                        "prefix": game.wine_prefix, "subkey": op.subkey, "name": op.name,
+                        "before": before})  # None: created by this apply; undo deletes it
     atomic_write_text(backup_dir / RECORDS_FILE, json.dumps(records, indent=2))
-    for src, target in pairs:
+    for src, target in plan.files:
         atomic_copy(src, target)
+    by_key: dict[str, list[tuple[str, str, dict[str, Any] | None]]] = {}
+    for op in plan.registry:
+        by_key.setdefault(op.key, []).append((op.subkey, op.name, op.value))
+    try:
+        for key, changes in by_key.items():
+            backend.write(key, changes)
+    except registry.RegistryError as e:
+        raise SwapError(str(e)) from e
 
 
 def _restore(backup_dir: Path) -> None:
@@ -213,12 +284,21 @@ def _restore(backup_dir: Path) -> None:
     if not records_file.exists():
         return  # failed before anything was written
     records = json.loads(records_file.read_text(encoding="utf-8"))
+    reg_changes: dict[tuple[str, str | None, str], list] = {}
     for rec in records:
+        if "registry" in rec:
+            key = (rec["backend"], rec.get("prefix"), rec["registry"])
+            reg_changes.setdefault(key, []).append((rec["subkey"], rec["name"], rec["before"]))
+            continue
         target = Path(rec["target"])
         if rec["backup"]:
             atomic_copy(backup_dir / rec["backup"], target)
         elif target.is_file():
             target.unlink()
+    for (kind, prefix, key), changes in reg_changes.items():
+        backend = (registry.WineRegistry(Path(prefix)) if kind == "wine"
+                   else registry.WindowsRegistry())
+        backend.write(key, changes)
 
 
 def switch_setup(root: Path, lib: Library, setup_id: str,
@@ -316,8 +396,8 @@ def restore_games(root: Path, lib: Library, games: list[Game], setup_id: str,
     return _apply_with_backup(root, items, kind="restore", previous=active, new=active)
 
 
-def changed_files(root: Path, lib: Library, game: Game, setup_id: str) -> list[Path]:
-    """Live files that differ from the game's saved config for setup_id.
+def changed_files(root: Path, lib: Library, game: Game, setup_id: str) -> list[Path | str]:
+    """Live files (and registry values, as text) that differ from the saved config.
 
     Empty when they match, or when there's nothing to compare (no snapshot, or it
     no longer matches the game's locations).
@@ -325,17 +405,35 @@ def changed_files(root: Path, lib: Library, game: Game, setup_id: str) -> list[P
     if lib.snapshot(game.id, setup_id) is None:
         return []
     try:
-        pairs = _plan(game, paths.snapshot_dir(root, game.id, setup_id))
+        plan = _plan(game, paths.snapshot_dir(root, game.id, setup_id))
     except SwapError:
         return []
-    changed = []
-    for src, target in pairs:
+    changed: list[Path | str] = []
+    for src, target in plan.files:
         try:
             if not target.is_file() or not _same_bytes(src, target):
                 changed.append(target)
         except OSError:
             changed.append(target)
+    if plan.registry:
+        try:
+            backend = _backend(game)
+            trees = {key: backend.read(key) or {} for key in {op.key for op in plan.registry}}
+        except registry.RegistryError:
+            return changed
+        for op in plan.registry:
+            now = trees[op.key].get(op.subkey, {}).get(op.name)
+            if not _same_value(now, op.value):
+                changed.append(f"{op.key}\\{registry.value_path(op.subkey, op.name)}")
     return changed
+
+
+def _same_value(a: dict[str, Any] | None, b: dict[str, Any] | None) -> bool:
+    if a is None or b is None:
+        return a is b
+    if "wine" in a or "wine" in b:
+        return a.get("wine") == b.get("wine")
+    return a == b
 
 
 def _same_bytes(a: Path, b: Path) -> bool:

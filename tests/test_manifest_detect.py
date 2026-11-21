@@ -120,7 +120,7 @@ def test_native_linux_mixed_and_registry(man, tmp_path):
     d = detect.detect(game, man.find(steam_app_id=892970), ctx)
     assert d.found == [ConfigLocation(str(prefs), LocationKind.FILE)]
     assert d.mixed == [str(userdata)]  # config+save: suggested, never auto-added
-    assert d.registry == ["HKEY_CURRENT_USER\\Software\\IronGate\\Valheim"]
+    assert d.registry == []  # a native Linux build doesn't use a registry
 
 
 def test_folder_wins_over_files_inside_and_globs(man, tmp_path):
