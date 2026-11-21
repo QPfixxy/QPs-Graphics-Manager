@@ -162,3 +162,15 @@ def test_config_location_editing(lib):
 def test_executables_round_trip(lib):
     lib.games[0].executables = ["Cyberpunk2077.exe", "/opt/games/cp/bin/cp.exe"]
     assert Library.from_dict(lib.to_dict()).games[0].executables == lib.games[0].executables
+
+
+def test_old_proton_prefix_key_still_loads(lib):
+    data = lib.to_dict()
+    g = data["games"][0]
+    g.pop("wine_prefix")
+    g.pop("store")
+    g.pop("store_id")
+    g["proton_prefix"] = "/x/compatdata/1091500/pfx"
+    loaded = Library.from_dict(data).games[0]
+    assert loaded.wine_prefix == "/x/compatdata/1091500/pfx"
+    assert loaded.store == "steam" and loaded.store_id == "1091500"

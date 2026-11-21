@@ -249,7 +249,7 @@ def import_games(library: Library, games: list[SteamGame]) -> ImportResult:
     """Add new Steam games to the library and refresh paths of ones already in it.
 
     Existing games keep their name, config locations and snapshots; only
-    install_dir and proton_prefix are updated (a game may have moved library).
+    install_dir and wine_prefix are updated (a game may have moved library).
     """
     result = ImportResult(added=[], updated=[])
     for sg in games:
@@ -258,11 +258,11 @@ def import_games(library: Library, games: list[SteamGame]) -> ImportResult:
         existing = library.game_by_steam_app_id(sg.app_id)
         if existing is None:
             game = Game(name=sg.name, steam_app_id=sg.app_id, install_dir=install_dir,
-                        proton_prefix=prefix)
+                        wine_prefix=prefix, store="steam", store_id=str(sg.app_id))
             result.added.append(library.add_game(game))
-        elif (existing.install_dir, existing.proton_prefix) != (install_dir, prefix):
+        elif (existing.install_dir, existing.wine_prefix) != (install_dir, prefix):
             existing.install_dir = install_dir
-            existing.proton_prefix = prefix
+            existing.wine_prefix = prefix
             result.updated.append(existing)
     return result
 

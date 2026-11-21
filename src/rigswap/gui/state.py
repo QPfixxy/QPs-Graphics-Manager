@@ -223,3 +223,17 @@ class AppState(QObject):
         with self._change():
             index = self.lib.setups.index(setup)
             self.lib.move_setup(setup.id, index + delta)
+
+    # --- all launchers ------------------------------------------------------------------
+
+    def discover(self):
+        from rigswap import launchers
+
+        return launchers.discover()
+
+    def import_found(self, found) -> list[Game]:
+        from rigswap import launchers
+
+        with self._change():
+            result = launchers.import_games(self.lib, found)
+        return result.added

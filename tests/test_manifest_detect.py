@@ -100,7 +100,7 @@ def test_proton_prefix_is_case_insensitive(man, tmp_path):
     # Real Proton prefixes don't always match the manifest's capitalisation
     gfx = touch(pfx / "drive_c" / "users" / "steamuser" / "AppData" / "Roaming" / "eldenring"
                 / "GraphicsConfig.xml")
-    game = Game(name="ELDEN RING", steam_app_id=1245620, proton_prefix=str(pfx),
+    game = Game(name="ELDEN RING", steam_app_id=1245620, wine_prefix=str(pfx),
                 install_dir=str(tmp_path / "steamapps" / "common" / "ELDEN RING"))
     ctx = detect.context_for(game, platform="linux", env={}, home=tmp_path / "linuxhome")
     assert ctx.os_name == "windows" and ctx.case_insensitive
@@ -210,3 +210,17 @@ def test_load_missing_and_old_format(tmp_path):
     manifest.index_file(tmp_path).parent.mkdir(parents=True)
     manifest.index_file(tmp_path).write_text(json.dumps({"v": 0, "games": {}}))
     assert manifest.load(tmp_path) is None
+
+
+def test_plain_wine_prefix_uses_the_linux_user_folder(man, tmp_path, monkeypatch):
+    """Heroic/Lutris prefixes name the Windows user after the Linux user, not steamuser."""
+    monkeypatch.setattr(detect, "_user_name", lambda: "alex")
+    pfx = tmp_path / "Prefixes" / "Elden Ring"
+    gfx = touch(pfx / "drive_c" / "users" / "alex" / "AppData" / "Roaming" / "EldenRing"
+                / "GraphicsConfig.xml")
+    (pfx / "drive_c" / "users" / "Public").mkdir()
+    game = Game(name="Elden Ring", wine_prefix=str(pfx), store="epic")
+    ctx = detect.context_for(game, platform="linux", env={}, home=tmp_path)
+    assert ctx.values["osUserName"] == "alex" and ctx.store == "epic"
+    d = detect.detect(game, man.find(name="Elden Ring"), ctx)
+    assert [loc.path for loc in d.found] == [str(gfx)]

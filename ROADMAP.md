@@ -79,9 +79,10 @@ The headless daemon matters for Bazzite and SteamOS-style Game Mode (gamescope),
 - [ ] Test on real eGPU hardware (Thunderbolt, USB4 and OCuLink docks)
 
 ### Phase 4: More launchers and harder cases
-- [ ] Heroic (GOG and Epic) and Lutris on Linux
-- [ ] GOG (registry) and Epic (`.item` manifests) on Windows
-- [ ] Windows catch-all: the Xbox Game Bar's own list of recognised games (`HKCU\System\GameConfigStore\Children`), which covers games from any launcher
+- [x] Heroic (GOG, Epic and Amazon) and Lutris on Linux, native and Flatpak, including each game's Wine prefix
+- [x] GOG (registry) and Epic (`.item` manifests) on Windows
+- [x] Windows catch-all: the Xbox Game Bar's own list of recognised games (`HKCU\System\GameConfigStore\Children`), which covers games from any launcher (offered unticked, since it can include non-games)
+- [x] One "Import games" step for every launcher, with a checklist and no duplicates
 - [ ] Registry-stored settings (common in Unity games): the Windows registry (saved and applied by exporting and importing the game's key as a `.reg` file), and `user.reg` inside Proton prefixes
 - [ ] RigSwap's own config detection, so it works fully without the game config database:
   - [ ] Engine rules: recognise a game's engine from its install folder, then check that engine's standard config locations:

@@ -282,13 +282,13 @@ def test_declining_the_database_on_import_is_remembered(with_db, monkeypatch):
     games = [steam.SteamGame(1145360, "Hades", e.tmp / "lib" / "Hades", e.tmp / "lib",
                              e.tmp / "Steam")]
     monkeypatch.setattr(steam, "find_steam_installs", lambda: [steam.SteamInstall(e.tmp)])
-    monkeypatch.setattr(steam, "discover_games", lambda installs: games)
-    e.prompts.answers = [False]  # no thanks
-    e.window.import_steam()
+    monkeypatch.setattr(steam, "discover_games", lambda installs=None: games)
+    e.prompts.answers = [True, False]  # import the ticked games; database: no thanks
+    e.window.import_games()
     assert e.state.lib.settings.use_manifest is False and e.downloads == []
     e.state.remove_game(e.state.lib.games[0])
     e.prompts.answers = []  # would default to True if asked
-    e.window.import_steam()
+    e.window.import_games()
     assert e.downloads == []  # not asked again
 
 
@@ -394,3 +394,25 @@ def test_setup_order_can_be_changed(env):
     assert [s.name for s in env.state.lib.setups] == ["B", "A"]
     buttons = [b.text() for b in env.window.findChildren(QPushButton, "SetupButton")]
     assert buttons == ["B", "A"]
+
+
+def test_import_dialog_ticks_new_suggested_games(env, monkeypatch):
+    from rigswap import launchers
+    from rigswap.gui.main_window import ImportDialog
+    from rigswap.launchers import FoundGame
+
+    have = FoundGame("Hades", "steam", "1145360", str(env.tmp / "Hades"), steam_app_id=1145360)
+    env.state.import_found([have])
+    found = [have,
+             FoundGame("Control", "epic", "Calluna", str(env.tmp / "Control"),
+                       wine_prefix=str(env.tmp / "pfx")),
+             FoundGame("Some Tool", "gamebar", "t", str(env.tmp / "Tool"), suggested=False)]
+    dialog = ImportDialog(env.window, found, lambda g: launchers.is_in_library(env.state.lib, g))
+    labels = [dialog.list.item(i).text() for i in range(dialog.list.count())]
+    assert "already added" in labels[0] and "Epic Games · Wine" in labels[1]
+    assert [g.name for g in dialog.chosen()] == ["Control"]  # Game Bar find starts unticked
+
+    monkeypatch.setattr(env.state, "discover", lambda: found)
+    env.window.with_manifest = lambda then, asked_by_user: None
+    env.window.import_games()
+    assert sorted(g.name for g in env.state.lib.games) == ["Control", "Hades"]

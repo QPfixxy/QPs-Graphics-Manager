@@ -54,6 +54,13 @@ def _parser() -> argparse.ArgumentParser:
                    help="start minimised to the tray (when automatic switching is on)")
     cmd(sub, "hardware", _hardware, "show the GPUs, power and displays RigSwap sees")
 
+    p = cmd(sub, "import", _import,
+            "find installed games from every launcher and add them to the library")
+    p.add_argument("--list", action="store_true", help="only list what's found")
+    p.add_argument("--include-found-by-windows", action="store_true",
+                   help="also add games found only in Windows' own game list "
+                        "(it can include non-games)")
+
     p = cmd(sub, "steam", _steam, "list installed Steam games")
     p.add_argument("--import", dest="do_import", action="store_true",
                    help="add them to the library")
@@ -245,20 +252,7 @@ def _steam(args) -> int:
         store, lib = _open()
         result = steam.import_games(lib, games)
         print(f"Imported: {len(result.added)} new, {len(result.updated)} updated")
-        if lib.settings.use_manifest is not False and result.added:
-            from rigswap.core import detect, manifest
-
-            man = manifest.load(store.root)
-            if man is None:
-                print("Tip: run 'rigswap manifest update' once, and RigSwap will find most "
-                      "games' config files for you.")
-            else:
-                n = 0
-                for g in result.added:
-                    found = detect.detect_game(g, man)
-                    if found:
-                        n += bool(detect.add_detected(lib, g, found))
-                print(f"Found config files for {n} of {len(result.added)} new game(s).")
+        _detect_new(store, lib, result.added)
         store.save(lib)
     return 0
 
@@ -321,7 +315,8 @@ def _game_list(args) -> int:
         print("No games yet. Import Steam games with: rigswap steam --import, "
               'or add one with: rigswap game add "Name"')
     for g in sorted(lib.games, key=lambda g: g.name.casefold()):
-        source = f"steam {g.steam_app_id}" if g.steam_app_id else "manual"
+        source = (f"steam {g.steam_app_id}" if g.steam_app_id
+                  else STORE_LABELS.get(g.store, g.store) if g.store else "manual")
         saved = [lib.setup(s.setup_id).name for s in lib.snapshots if s.game_id == g.id]
         print(f"{g.id[:8]}  {g.name}  [{source}]  "
               f"{len(g.config_locations)} config location(s)"
@@ -357,8 +352,10 @@ def _game_show(args) -> int:
     if g.steam_app_id:
         print(f"  Steam app: {g.steam_app_id}")
     print(f"  Install folder: {g.install_dir or '-'}")
-    if g.proton_prefix:
-        print(f"  Proton prefix: {g.proton_prefix}")
+    if g.store and g.store not in ("steam",):
+        print(f"  Store: {g.store}" + (f" ({g.store_id})" if g.store_id else ""))
+    if g.wine_prefix:
+        print(f"  Wine prefix: {g.wine_prefix}")
     print(f"  Executables: {', '.join(g.executables) or '-'}")
     print("  Config locations:" + ("" if g.config_locations else " none"))
     for n, loc in enumerate(g.config_locations, 1):
@@ -765,3 +762,57 @@ def _autostart(args) -> int:
     except OSError as e:
         raise CliError(str(e)) from e
     return 0
+
+
+STORE_LABELS = {"steam": "Steam", "epic": "Epic Games", "gog": "GOG", "amazon": "Amazon Games",
+                "lutris": "Lutris", "gamebar": "found by Windows"}
+
+
+def _import(args) -> int:
+    from rigswap import launchers
+
+    store, lib = _open()
+    found = launchers.discover()
+    if not found:
+        print("No installed games found.")
+        return 0
+    chosen = []
+    for g in found:
+        have = launchers.is_in_library(lib, g)
+        take = not have and (g.suggested or args.include_found_by_windows)
+        mark = "=" if have else ("+" if take else " ")
+        prefix = " [Wine]" if g.wine_prefix and g.store != "steam" else (
+            " [Proton]" if g.wine_prefix else "")
+        print(f"{mark} {g.name}  ({STORE_LABELS.get(g.store, g.store)}){prefix}")
+        if take:
+            chosen.append(g)
+    print("(= already in the library, + new)")
+    if args.list:
+        return 0
+    result = launchers.import_games(lib, chosen)
+    print(f"Imported: {len(result.added)} new game(s).")
+    skipped = sum(1 for g in found if g.store == "gamebar" and not launchers.is_in_library(lib, g))
+    if skipped:
+        print(f"{skipped} game(s) found only by Windows were left out; add them with "
+              "--include-found-by-windows.")
+    _detect_new(store, lib, result.added)
+    store.save(lib)
+    return 0
+
+
+def _detect_new(store, lib, added) -> None:
+    if lib.settings.use_manifest is False or not added:
+        return
+    from rigswap.core import detect, manifest
+
+    man = manifest.load(store.root)
+    if man is None:
+        print("Tip: run 'rigswap manifest update' once, and RigSwap will find most "
+              "games' config files for you.")
+        return
+    n = 0
+    for g in added:
+        found = detect.detect_game(g, man)
+        if found:
+            n += bool(detect.add_detected(lib, g, found))
+    print(f"Found config files for {n} of {len(added)} new game(s).")

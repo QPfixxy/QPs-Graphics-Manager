@@ -125,6 +125,22 @@ class CardDelegate(QStyledItemDelegate):
         p.restore()
 
 
+STORE_NAMES = {"steam": "Steam", "epic": "Epic Games", "gog": "GOG", "amazon": "Amazon Games",
+               "lutris": "Lutris", "gamebar": "Found by Windows"}
+
+
+def source_label(game: Game) -> str:
+    if game.steam_app_id:
+        text = f"Steam app {game.steam_app_id}"
+    elif game.store:
+        text = STORE_NAMES.get(game.store, game.store.title())
+    else:
+        text = "Added by hand"
+    if game.wine_prefix:
+        text += " · Proton" if game.store == "steam" else " · Wine"
+    return text
+
+
 def game_status(state: AppState, game: Game) -> tuple[str, str]:
     if not game.config_locations:
         return "No config files yet", "none"
@@ -275,6 +291,56 @@ class ConditionsDialog(QDialog):
         self.preview.setStyleSheet(f"color: {STATUS_COLORS[kind].name()};")
 
 
+class ImportDialog(QDialog):
+    """Everything found on this PC, ticked if it's new and looks like a game."""
+
+    def __init__(self, parent: QWidget, found, in_library) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Import games")
+        self.setMinimumSize(560, 480)
+        self.found = found
+        v = QVBoxLayout(self)
+        new = [g for g in found if not in_library(g)]
+        intro = QLabel(f"Found {len(found)} installed game(s); {len(new)} aren't in RigSwap "
+                       "yet. Games Windows found on its own can include apps that aren't games, "
+                       "so they start unticked.")
+        intro.setWordWrap(True)
+        v.addWidget(intro)
+        self.list = QListWidget()
+        for g in found:
+            have = in_library(g)
+            label = f"{g.name}    ·  {STORE_NAMES.get(g.store, g.store)}"
+            if g.wine_prefix:
+                label += " · Proton" if g.store == "steam" else " · Wine"
+            if have:
+                label += "  (already added)"
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, g)
+            if have:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+            else:
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Checked if g.suggested
+                                   else Qt.CheckState.Unchecked)
+            self.list.addItem(item)
+        v.addWidget(self.list, 1)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                   | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Import")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        v.addWidget(buttons)
+
+    def chosen(self):
+        out = []
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            if item.flags() & Qt.ItemFlag.ItemIsUserCheckable and \
+                    item.checkState() == Qt.CheckState.Checked:
+                out.append(item.data(Qt.ItemDataRole.UserRole))
+        return out
+
+
 class PatternsDialog(QDialog):
     def __init__(self, parent: QWidget, loc: ConfigLocation) -> None:
         super().__init__(parent)
@@ -381,9 +447,7 @@ class DetailPanel(QWidget):
         title.setObjectName("Title")
         title.setWordWrap(True)
         info.addWidget(title)
-        source = f"Steam app {game.steam_app_id}" if game.steam_app_id else "Added by hand"
-        if game.proton_prefix:
-            source += " · Proton"
+        source = source_label(game)
         sub = QLabel(source)
         sub.setObjectName("Hint")
         info.addWidget(sub)
@@ -639,13 +703,14 @@ class MainWindow(QMainWindow):
         title.setObjectName("Title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ev.addWidget(title)
-        ev.addWidget(_hint("Import your Steam games, or add any game by hand."),
+        ev.addWidget(_hint("Import games from Steam, Epic, GOG, Heroic or Lutris, or add any "
+                           "game by hand."),
                      0, Qt.AlignmentFlag.AlignCenter)
         eb = QHBoxLayout()
         eb.addStretch()
-        b1 = QPushButton("Import Steam games")
+        b1 = QPushButton("Import games")
         b1.setObjectName("Primary")
-        b1.clicked.connect(self.import_steam)
+        b1.clicked.connect(self.import_games)
         b2 = QPushButton("Add game…")
         b2.clicked.connect(self.add_game)
         eb.addWidget(b1)
@@ -724,8 +789,9 @@ class MainWindow(QMainWindow):
         self.undo_button = QPushButton("Undo switch")
         self.undo_button.clicked.connect(self.undo)
         row.addWidget(self.undo_button)
-        imp = QPushButton("Import Steam games")
-        imp.clicked.connect(self.import_steam)
+        imp = QPushButton("Import games")
+        imp.setToolTip("Find installed games from Steam, Epic, GOG, Heroic and Lutris")
+        imp.clicked.connect(self.import_games)
         row.addWidget(imp)
         add_game = QPushButton("Add game…")
         add_game.setObjectName("Primary")
@@ -912,16 +978,29 @@ class MainWindow(QMainWindow):
                 f"{active.name if active else 'none'}", 8000)
 
     def import_steam(self) -> None:
-        ok, result = self._try("Import Steam games", self.state.import_steam)
+        """Kept for compatibility: imports from every launcher."""
+        self.import_games()
+
+    def import_games(self) -> None:
+        ok, found = self._try("Import games", self.state.discover)
         if not ok:
             return
-        if not self.state.steam_roots:
-            self.inform("Import Steam games", "No Steam install was found on this computer.")
+        if not found:
+            self.inform("Import games", "No installed games were found from Steam, Epic, GOG, "
+                        "Heroic or Lutris. Add games by hand with Add game….")
             return
-        self.statusBar().showMessage(f"Steam: {len(result.added)} new game(s), "
-                                     f"{len(result.updated)} updated.", 8000)
-        if result.added:
-            new_ids = [g.id for g in result.added]
+        from rigswap import launchers
+
+        dialog = ImportDialog(self, found, lambda g: launchers.is_in_library(self.state.lib, g))
+        if not self.run_dialog(dialog):
+            return
+        chosen = dialog.chosen()
+        ok, added = self._try("Import games", lambda: self.state.import_found(chosen))
+        if not ok:
+            return
+        self.statusBar().showMessage(f"Imported {len(added)} game(s).", 8000)
+        if added:
+            new_ids = [g.id for g in added]
             self.with_manifest(lambda: self._auto_detect(new_ids), asked_by_user=False)
 
     def _auto_detect(self, game_ids: list[str]) -> None:

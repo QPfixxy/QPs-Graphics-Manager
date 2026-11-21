@@ -59,7 +59,7 @@ def context_for(game: Game, *, platform: str = sys.platform,
                 documents: Path | None = None) -> Context:
     env = dict(os.environ) if env is None else env
     home = Path(home) if home is not None else Path.home()
-    store = "steam" if game.steam_app_id is not None else None
+    store = game.store or ("steam" if game.steam_app_id is not None else None)
     values: dict[str, str] = {}
     if game.install_dir:
         base = Path(game.install_dir)
@@ -69,15 +69,16 @@ def context_for(game: Game, *, platform: str = sys.platform,
             values["root"] = str(base.parent.parent.parent)
     values["storeUserId"] = "*"
 
-    if game.proton_prefix:
-        user = Path(game.proton_prefix) / "drive_c" / "users" / PROTON_USER
-        drive_c = Path(game.proton_prefix) / "drive_c"
+    if game.wine_prefix:
+        drive_c = Path(game.wine_prefix) / "drive_c"
+        user_name = prefix_user(Path(game.wine_prefix))
+        user = drive_c / "users" / user_name
         values.update(_windows_dirs(user, user / "Documents"))
         values.update({
             "winPublic": str(drive_c / "users" / "Public"),
             "winProgramData": str(drive_c / "ProgramData"),
             "winDir": str(drive_c / "windows"),
-            "osUserName": PROTON_USER,
+            "osUserName": user_name,
         })
         return Context("windows", store, values, case_insensitive=True)
 
@@ -96,6 +97,21 @@ def context_for(game: Game, *, platform: str = sys.platform,
     values["xdgConfig"] = env.get("XDG_CONFIG_HOME") or str(home / ".config")
     values["xdgData"] = env.get("XDG_DATA_HOME") or str(home / ".local" / "share")
     return Context("linux", store, values)
+
+
+def prefix_user(prefix: Path) -> str:
+    """The Windows user folder inside a Wine prefix: 'steamuser' for Proton, the
+    Linux user name for plain Wine (Heroic, Lutris)."""
+    users = prefix / "drive_c" / "users"
+    for candidate in (PROTON_USER, _user_name()):
+        if candidate and (users / candidate).is_dir():
+            return candidate
+    try:
+        others = sorted(p.name for p in users.iterdir()
+                        if p.is_dir() and p.name.lower() != "public")
+    except OSError:
+        others = []
+    return others[0] if others else PROTON_USER
 
 
 def _windows_dirs(home: Path, documents: Path) -> dict[str, str]:

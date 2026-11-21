@@ -176,7 +176,8 @@ def test_import_adds_new_and_updates_moved(steam_root, tmp_path):
     assert result.updated == [existing]
     assert existing.name == "My Cyberpunk"  # user's name kept
     assert existing.install_dir == str(games[0].install_dir)
-    assert existing.proton_prefix == str(games[0].proton_prefix)
+    assert existing.wine_prefix == str(games[0].proton_prefix)
+    assert existing.store == "steam" and existing.store_id == "1091500"
     assert sorted(g.steam_app_id for g in result.added) == [620, 1174180, 1245620]
     again = steam.import_games(lib, games)
     assert again.added == [] and again.updated == []

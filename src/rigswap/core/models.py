@@ -165,8 +165,13 @@ class Game:
     config_locations: list[ConfigLocation] = field(default_factory=list)
     steam_app_id: int | None = None
     install_dir: str | None = None
-    # Linux/Proton only: the game's Wine prefix (steamapps/compatdata/<appid>/pfx).
-    proton_prefix: str | None = None
+    # Linux only: the Wine prefix a Windows game runs in (a Proton prefix for Steam,
+    # or a Heroic/Lutris prefix). Its config files live inside it.
+    wine_prefix: str | None = None
+    # Where it came from: "steam", "epic", "gog", "amazon", "lutris", "gamebar" or None
+    # (added by hand), and that store's id for it.
+    store: str | None = None
+    store_id: str | None = None
     # Extra ways to tell the game is running: full paths, or bare file names such as
     # "Cyberpunk2077.exe" (which also match a Proton/Wine command line).
     executables: list[str] = field(default_factory=list)
@@ -174,13 +179,21 @@ class Game:
     poster: str | None = None
     id: str = field(default_factory=new_id)
 
+    def __post_init__(self) -> None:
+        if self.steam_app_id is not None and self.store is None:
+            self.store = "steam"
+        if self.steam_app_id is not None and self.store == "steam" and self.store_id is None:
+            self.store_id = str(self.steam_app_id)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
             "steam_app_id": self.steam_app_id,
             "install_dir": self.install_dir,
-            "proton_prefix": self.proton_prefix,
+            "wine_prefix": self.wine_prefix,
+            "store": self.store,
+            "store_id": self.store_id,
             "executables": list(self.executables),
             "poster": self.poster,
             "config_locations": [loc.to_dict() for loc in self.config_locations],
@@ -196,7 +209,9 @@ class Game:
             name=_req_str(d, "name"),
             steam_app_id=app_id,
             install_dir=d.get("install_dir"),
-            proton_prefix=d.get("proton_prefix"),
+            wine_prefix=d.get("wine_prefix") or d.get("proton_prefix"),  # old name
+            store=d.get("store"),
+            store_id=d.get("store_id"),
             executables=_str_list(d, "executables"),
             poster=d.get("poster"),
             config_locations=[ConfigLocation.from_dict(x) for x in d.get("config_locations", [])],
