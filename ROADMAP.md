@@ -79,6 +79,14 @@ The headless daemon matters for Bazzite and SteamOS-style Game Mode (gamescope),
 - [ ] GOG (registry) and Epic (`.item` manifests) on Windows
 - [ ] Windows catch-all: the Xbox Game Bar's own list of recognised games (`HKCU\System\GameConfigStore\Children`), which covers games from any launcher
 - [ ] Registry-stored settings (common in Unity games): the Windows registry (saved and applied by exporting and importing the game's key as a `.reg` file), and `user.reg` inside Proton prefixes
+- [ ] RigSwap's own config detection, so it works fully without the game config database:
+  - [ ] Engine rules: recognise a game's engine from its install folder, then check that engine's standard config locations:
+    - [ ] Unreal Engine: `Saved/Config/<Windows|WindowsNoEditor|Linux>/GameUserSettings.ini` (and its other `.ini` files) under the game's AppData or Documents folder
+    - [ ] Unity: player preferences in the registry (`HKCU\Software\<Company>\<Game>`) on Windows, and `~/.config/unity3d/<Company>/<Game>/prefs` on Linux
+    - [ ] Source engine: `cfg/video.txt` and `cfg/videodefaults.txt` in the install folder
+  - [ ] Learn mode, for any game nothing else recognises: RigSwap snapshots the usual config places (AppData, LocalLow, Documents, the Proton prefix and, on Windows, the registry), you change one graphics setting in the game, and RigSwap shows which files or keys changed so you can add them in one click
+  - [ ] Detection order: game config database (if enabled) → engine rules → Learn mode → add by hand. Learn mode's results can also confirm or correct what the database says
+  - [ ] The game config database stays optional: everything works with it turned off
 
 ### Phase 5: Distribution
 - [ ] Windows: PyInstaller build plus an installer
