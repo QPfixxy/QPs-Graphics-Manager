@@ -75,14 +75,17 @@ class ConfigLocation:
 @dataclass
 class Setup:
     name: str
+    # A locked setup's snapshots are never overwritten by "save when switching away".
+    locked: bool = False
     id: str = field(default_factory=new_id)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "name": self.name}
+        return {"id": self.id, "name": self.name, "locked": self.locked}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Setup:
-        return cls(id=_req_str(d, "id"), name=_req_str(d, "name"))
+        return cls(id=_req_str(d, "id"), name=_req_str(d, "name"),
+                   locked=bool(d.get("locked", False)))
 
 
 @dataclass
@@ -157,14 +160,19 @@ class Settings:
     active_setup_id: str | None = None
     # Save the live config back into the outgoing setup's snapshot when switching away.
     save_on_switch: bool = True
+    # Use the Ludusavi manifest to find config files: None = not asked yet.
+    use_manifest: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"active_setup_id": self.active_setup_id, "save_on_switch": self.save_on_switch}
+        return {"active_setup_id": self.active_setup_id, "save_on_switch": self.save_on_switch,
+                "use_manifest": self.use_manifest}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Settings:
+        use = d.get("use_manifest")
         return cls(active_setup_id=d.get("active_setup_id"),
-                   save_on_switch=bool(d.get("save_on_switch", True)))
+                   save_on_switch=bool(d.get("save_on_switch", True)),
+                   use_manifest=use if isinstance(use, bool) else None)
 
 
 @dataclass

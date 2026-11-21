@@ -57,22 +57,28 @@ The headless daemon matters for Bazzite and SteamOS-style Game Mode (gamescope),
 - [x] GUI built around setups
 
 ### Phase 2: Automatic config detection
-- [ ] Load the Ludusavi manifest's config paths
-- [ ] Expand its path placeholders for Windows and Proton prefixes
-- [ ] Detect each game's config files on import; users can override them
+- [x] Load the Ludusavi manifest's config paths (downloaded on first use with an ETag check, never bundled, since its data comes from PCGamingWiki under CC BY-NC-SA)
+- [x] Expand its path placeholders for Windows and Proton prefixes
+- [x] Detect each game's config files on import; users can override them
+- [x] Startup check: on launch, compare each game's live config with the active setup's saved copy, and ask before doing anything if it changed while RigSwap was closed (e.g. a game update or Steam Cloud sync)
+- [x] Locked setups: a setup marked as locked is never overwritten by "save when switching away", so a known-good config stays put
 
 ### Phase 3: Automatic switching
-- [ ] GPU detection:
-  - [ ] Linux: read `/sys/class/drm` and watch for hotplug events with `pyudev`
-  - [ ] Windows: query WMI and listen for device-change events
+- [ ] eGPU detection that works for any brand or connection (Thunderbolt, USB4, OCuLink):
+  - [ ] Windows: ask Windows whether each display adapter is removable (its device removal policy), instead of matching GPU names
+  - [ ] Linux: read `/sys/class/drm` and the PCI device's `removable` attribute (or whether it sits behind a Thunderbolt/USB4 port); watch for hotplug events with `pyudev`
+- [ ] React to device, display and power changes (on Windows: device-change, display-change and power events); events only mark that something changed, and one loop re-checks everything
+- [ ] Never switch under a running game: if the hardware changes mid-game, wait until the game closes, and say so ("switching to Handheld when you close Elden Ring")
 - [ ] Optional conditions: AC vs. battery, external display
-- [ ] Rules that map conditions to a setup (e.g. "RTX 4070 present → eGPU Dock")
+- [ ] Rules that map conditions to a setup (e.g. "RTX 4070 present → eGPU Dock"), with setups suggested from the GPUs RigSwap detects
+- [ ] No administrator rights needed
 - [ ] Start the daemon at login: systemd user service on Linux, startup task on Windows
 
 ### Phase 4: More launchers and harder cases
 - [ ] Heroic (GOG and Epic) and Lutris on Linux
 - [ ] GOG (registry) and Epic (`.item` manifests) on Windows
-- [ ] Registry-stored settings (common in Unity games): the Windows registry, and `user.reg` inside Proton prefixes
+- [ ] Windows catch-all: the Xbox Game Bar's own list of recognised games (`HKCU\System\GameConfigStore\Children`), which covers games from any launcher
+- [ ] Registry-stored settings (common in Unity games): the Windows registry (saved and applied by exporting and importing the game's key as a `.reg` file), and `user.reg` inside Proton prefixes
 
 ### Phase 5: Distribution
 - [ ] Windows: PyInstaller build plus an installer

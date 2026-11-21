@@ -243,7 +243,9 @@ def switch_setup(root: Path, lib: Library, setup_id: str,
             stale.append(g)
         else:
             to_apply.append(g)
-    to_save = games if (lib.settings.save_on_switch and previous and previous != setup_id) else []
+    save_back = (lib.settings.save_on_switch and previous and previous != setup_id
+                 and not lib.setup(previous).locked)
+    to_save = games if save_back else []
     affected = list({g.id: g for g in [*to_save, *to_apply]}.values())
     _refuse_if_running(affected, running)
 
@@ -251,31 +253,9 @@ def switch_setup(root: Path, lib: Library, setup_id: str,
         _write_snapshot(root, g, previous)
         lib.record_snapshot(g.id, previous)
 
-    op_id = _new_op_id()
-    op_dir = paths.backups_dir(root) / op_id
-    op_dir.mkdir(parents=True)
-    atomic_write_text(op_dir / OP_FILE, json.dumps({
-        "id": op_id,
-        "created": datetime.now(UTC).isoformat(),
-        "kind": "switch",
-        "previous_active_setup_id": previous,
-        "new_active_setup_id": setup_id,
-        "games": [g.id for g in to_apply],
-    }, indent=2))
-
-    started: list[Game] = []
-    try:
-        for g in to_apply:
-            started.append(g)
-            _apply(g, snap_dirs[g.id], op_dir / g.id)
-    except BaseException:
-        for g in reversed(started):
-            _restore(op_dir / g.id)
-        rmtree(op_dir)
-        raise
-
+    op_id = _apply_with_backup(root, [(g, snap_dirs[g.id]) for g in to_apply],
+                               kind="switch", previous=previous, new=setup_id)
     lib.settings.active_setup_id = setup_id
-    _prune_backups(root)
     return SwitchResult(
         setup=setup,
         applied=to_apply,
@@ -285,6 +265,89 @@ def switch_setup(root: Path, lib: Library, setup_id: str,
         unchecked=[g for g in affected if not processes.can_check(g)],
         op_id=op_id,
     )
+
+
+def _apply_with_backup(root: Path, items: list[tuple[Game, Path]], *, kind: str,
+                       previous: str | None, new: str | None) -> str:
+    """Apply snapshots as one undoable operation; on failure roll back and re-raise."""
+    op_id = _new_op_id()
+    op_dir = paths.backups_dir(root) / op_id
+    op_dir.mkdir(parents=True)
+    atomic_write_text(op_dir / OP_FILE, json.dumps({
+        "id": op_id,
+        "created": datetime.now(UTC).isoformat(),
+        "kind": kind,
+        "previous_active_setup_id": previous,
+        "new_active_setup_id": new,
+        "games": [g.id for g, _ in items],
+    }, indent=2))
+    started: list[Game] = []
+    try:
+        for g, snap_dir in items:
+            started.append(g)
+            _apply(g, snap_dir, op_dir / g.id)
+    except BaseException:
+        for g in reversed(started):
+            _restore(op_dir / g.id)
+        rmtree(op_dir)
+        raise
+    _prune_backups(root)
+    return op_id
+
+
+def restore_game(root: Path, lib: Library, game: Game, setup_id: str,
+                 *, running: RunningCheck | None = None) -> str:
+    """Put one game's saved config for setup_id back over its live config (undoable)."""
+    return restore_games(root, lib, [game], setup_id, running=running)
+
+
+def restore_games(root: Path, lib: Library, games: list[Game], setup_id: str,
+                  *, running: RunningCheck | None = None) -> str:
+    """Put several games' saved configs back as one undoable operation."""
+    items = []
+    for game in games:
+        if lib.snapshot(game.id, setup_id) is None:
+            raise SwapError(f"{game.name} has no saved config for {lib.setup(setup_id).name}")
+        snap_dir = paths.snapshot_dir(root, game.id, setup_id)
+        _plan(game, snap_dir)
+        items.append((game, snap_dir))
+    _refuse_if_running(games, running)
+    active = lib.settings.active_setup_id
+    return _apply_with_backup(root, items, kind="restore", previous=active, new=active)
+
+
+def changed_files(root: Path, lib: Library, game: Game, setup_id: str) -> list[Path]:
+    """Live files that differ from the game's saved config for setup_id.
+
+    Empty when they match, or when there's nothing to compare (no snapshot, or it
+    no longer matches the game's locations).
+    """
+    if lib.snapshot(game.id, setup_id) is None:
+        return []
+    try:
+        pairs = _plan(game, paths.snapshot_dir(root, game.id, setup_id))
+    except SwapError:
+        return []
+    changed = []
+    for src, target in pairs:
+        try:
+            if not target.is_file() or not _same_bytes(src, target):
+                changed.append(target)
+        except OSError:
+            changed.append(target)
+    return changed
+
+
+def _same_bytes(a: Path, b: Path) -> bool:
+    if a.stat().st_size != b.stat().st_size:
+        return False
+    with open(a, "rb") as fa, open(b, "rb") as fb:
+        while True:
+            ca, cb = fa.read(1 << 16), fb.read(1 << 16)
+            if ca != cb:
+                return False
+            if not ca:
+                return True
 
 
 def undo_last(root: Path, lib: Library,

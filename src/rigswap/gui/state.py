@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
-from rigswap.core import steam, swap
+from rigswap.core import detect, manifest, steam, swap
 from rigswap.core.artwork import Art, find_art
 from rigswap.core.models import ConfigLocation, Game, Setup
 from rigswap.core.store import LibraryStore
@@ -39,6 +39,7 @@ class AppState(QObject):
         self._running = running
         self._steam_roots = steam_roots
         self._art: dict[str, Art | None] = {}
+        self._manifest: manifest.Manifest | None = None
 
     @property
     def root(self) -> Path:
@@ -146,3 +147,64 @@ class AppState(QObject):
     def save_snapshot(self, game: Game, setup: Setup) -> None:
         with self._change():
             swap.save_snapshot(self.root, self.lib, game, setup.id, running=self._running)
+
+    # --- locked setups, restore, changes --------------------------------------------
+
+    def set_locked(self, setup: Setup, locked: bool) -> None:
+        with self._change():
+            setup.locked = locked
+
+    def changed_files(self, game: Game, setup: Setup) -> list[Path]:
+        return swap.changed_files(self.root, self.lib, game, setup.id)
+
+    def restore(self, games: list[Game], setup: Setup) -> str:
+        with self._change():
+            return swap.restore_games(self.root, self.lib, games, setup.id,
+                                      running=self._running)
+
+    def locked_drift(self) -> tuple[Setup | None, list[Game]]:
+        """Games whose live config no longer matches a *locked* active setup."""
+        setup = self.active_setup()
+        if setup is None or not setup.locked:
+            return setup, []
+        return setup, [g for g in self.lib.games if self.changed_files(g, setup)]
+
+    # --- the config database (Ludusavi manifest) --------------------------------------
+
+    def manifest(self) -> manifest.Manifest | None:
+        if self._manifest is None:
+            try:
+                self._manifest = manifest.load(self.root)
+            except manifest.ManifestError:
+                self._manifest = None
+        return self._manifest
+
+    def manifest_downloaded(self) -> None:
+        """Call after manifest.update() so the new copy is used."""
+        self._manifest = None
+
+    def set_use_manifest(self, value: bool) -> None:
+        with self._change():
+            self.lib.settings.use_manifest = value
+
+    def detect(self, game: Game) -> detect.Detection | None:
+        man = self.manifest()
+        return detect.detect_game(game, man) if man else None
+
+    def add_locations(self, game: Game, locations: list[ConfigLocation]) -> None:
+        with self._change():
+            for loc in locations:
+                self.lib.add_config_location(game.id, loc)
+
+    def auto_detect(self, games: list[Game]) -> dict[str, int]:
+        """Add safe config locations for each game; returns {game id: number added}."""
+        man = self.manifest()
+        added: dict[str, int] = {}
+        if man is None:
+            return added
+        with self._change():
+            for game in games:
+                found = detect.detect_game(game, man)
+                if found:
+                    added[game.id] = len(detect.add_detected(self.lib, game, found))
+        return added

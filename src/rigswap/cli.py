@@ -28,11 +28,12 @@ def main(argv: list[str] | None = None) -> int:
     if handler is None:
         parser.print_help()
         return 0
+    from rigswap.core.manifest import ManifestError
     from rigswap.core.swap import SwapError
 
     try:
         return handler(args)
-    except (CliError, LibraryError, SwapError) as e:
+    except (CliError, LibraryError, SwapError, ManifestError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
@@ -65,6 +66,11 @@ def _parser() -> argparse.ArgumentParser:
     p = cmd(setup_sub, "remove", _setup_remove, "remove a setup and its saved configs")
     p.add_argument("name")
     p.add_argument("--yes", action="store_true", help="also delete its saved configs")
+    p = cmd(setup_sub, "lock", _setup_lock,
+            "lock a setup: switching away never saves over its configs")
+    p.add_argument("name")
+    p = cmd(setup_sub, "unlock", _setup_unlock, "unlock a setup")
+    p.add_argument("name")
 
     game = sub.add_parser("game", help="manage games")
     game_sub = game.add_subparsers(dest="action", metavar="ACTION", required=True)
@@ -113,6 +119,23 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("setup")
 
     cmd(sub, "undo", _undo, "put back the configs from before the last switch")
+
+    p = cmd(sub, "restore", _restore,
+            "put a game's saved config back (for the active setup unless --setup)")
+    p.add_argument("game")
+    p.add_argument("--setup")
+
+    cmd(sub, "status", _status, "list games whose live config differs from the active setup's")
+
+    man = sub.add_parser("manifest", help="the game config database")
+    man_sub = man.add_subparsers(dest="action", metavar="ACTION", required=True)
+    cmd(man_sub, "update", _manifest_update, "download or update it (about 17 MB)")
+    cmd(man_sub, "info", _manifest_info, "show whether it's downloaded and how big it is")
+
+    p = cmd(sub, "detect", _detect, "find games' config files using the manifest")
+    p.add_argument("game", nargs="?", help="omit with --all")
+    p.add_argument("--all", action="store_true", help="every game in the library")
+    p.add_argument("--add", action="store_true", help="add the safe ones it finds")
     return parser
 
 
@@ -180,8 +203,22 @@ def _steam(args) -> int:
     if args.do_import:
         store, lib = _open()
         result = steam.import_games(lib, games)
-        store.save(lib)
         print(f"Imported: {len(result.added)} new, {len(result.updated)} updated")
+        if lib.settings.use_manifest is not False and result.added:
+            from rigswap.core import detect, manifest
+
+            man = manifest.load(store.root)
+            if man is None:
+                print("Tip: run 'rigswap manifest update' once, and RigSwap will find most "
+                      "games' config files for you.")
+            else:
+                n = 0
+                for g in result.added:
+                    found = detect.detect_game(g, man)
+                    if found:
+                        n += bool(detect.add_detected(lib, g, found))
+                print(f"Found config files for {n} of {len(result.added)} new game(s).")
+        store.save(lib)
     return 0
 
 
@@ -195,7 +232,8 @@ def _setup_list(args) -> int:
     for s in lib.setups:
         marker = "*" if s.id == lib.settings.active_setup_id else " "
         count = sum(1 for snap in lib.snapshots if snap.setup_id == s.id)
-        print(f"{marker} {s.name}  ({count} game(s) saved)")
+        lock = ", locked" if s.locked else ""
+        print(f"{marker} {s.name}  ({count} game(s) saved{lock})")
     return 0
 
 
@@ -436,4 +474,146 @@ def _undo(args) -> int:
         return 0
     store.save(lib)
     print(f"Undone: {len(result.restored)} game(s) restored. Active setup: {_active_name(lib)}")
+    return 0
+
+
+# --- locked setups, restore, status --------------------------------------------------
+
+
+def _setup_lock(args) -> int:
+    return _set_locked(args.name, True)
+
+
+def _setup_unlock(args) -> int:
+    return _set_locked(args.name, False)
+
+
+def _set_locked(name: str, locked: bool) -> int:
+    store, lib = _open()
+    setup = _find_setup(lib, name)
+    setup.locked = locked
+    store.save(lib)
+    if locked:
+        print(f"Locked {setup.name}: switching away won't save over its configs. "
+              f"'rigswap save' still updates them when you ask.")
+    else:
+        print(f"Unlocked {setup.name}.")
+    return 0
+
+
+def _restore(args) -> int:
+    from rigswap.core import swap
+
+    store, lib = _open()
+    game = lib.find_game(args.game)
+    setup = _find_setup(lib, args.setup) if args.setup else (
+        lib.setup(lib.settings.active_setup_id) if lib.settings.active_setup_id else None)
+    if setup is None:
+        raise CliError("no active setup; name one with --setup")
+    try:
+        swap.restore_game(store.root, lib, game, setup.id)
+    except OSError as e:
+        raise CliError(f"restore failed and was rolled back: {e}") from e
+    print(f"Put back {game.name}'s saved {setup.name} config. 'rigswap undo' reverses this.")
+    return 0
+
+
+def _status(args) -> int:
+    from rigswap.core import swap
+
+    store, lib = _open()
+    active = lib.settings.active_setup_id
+    if not active:
+        print("No active setup yet.")
+        return 0
+    setup = lib.setup(active)
+    lock = " (locked)" if setup.locked else ""
+    print(f"Active setup: {setup.name}{lock}")
+    any_changed = False
+    for g in sorted(lib.games, key=lambda g: g.name.casefold()):
+        changed = swap.changed_files(store.root, lib, g, active)
+        if changed:
+            any_changed = True
+            print(f"  {g.name}: {len(changed)} file(s) differ from the saved {setup.name} config")
+            for path in changed[:5]:
+                print(f"      {path}")
+    if not any_changed:
+        print("  Every game matches its saved config.")
+    elif setup.locked:
+        print(f"{setup.name} is locked, so these changes won't be saved. "
+              "Put a game back with: rigswap restore <game>")
+    else:
+        print(f"These changes are saved into {setup.name} when you switch away.")
+    return 0
+
+
+# --- manifest / detection -------------------------------------------------------------
+
+
+def _manifest_update(args) -> int:
+    from rigswap.core import manifest
+
+    store, lib = _open()
+    print("Checking for game config database updates...")
+    result = manifest.update(store.root)
+    if lib.settings.use_manifest is not True:
+        lib.settings.use_manifest = True
+        store.save(lib)
+    print(("Downloaded" if result.changed else "Already up to date:")
+          + f" {result.games} games with known config files.")
+    return 0
+
+
+def _manifest_info(args) -> int:
+    from rigswap.core import manifest
+
+    store, _ = _open()
+    man = manifest.load(store.root)
+    if man is None:
+        print("Not downloaded yet. Run: rigswap manifest update")
+    else:
+        print(f"{len(man)} games with known config files, downloaded {man.fetched_at}.")
+    return 0
+
+
+def _detect(args) -> int:
+    from rigswap.core import detect, manifest
+
+    store, lib = _open()
+    man = manifest.load(store.root)
+    if man is None:
+        raise CliError("the game database isn't downloaded yet; run: rigswap manifest update")
+    if args.all == bool(args.game):
+        raise CliError("name one game, or use --all")
+    games = sorted(lib.games, key=lambda g: g.name.casefold()) if args.all \
+        else [lib.find_game(args.game)]
+    total_added = 0
+    for g in games:
+        found = detect.detect_game(g, man)
+        if found is None:
+            if not args.all:
+                print(f"{g.name}: not in the database. Add its config files by hand.")
+            continue
+        new = detect.new_locations(g, found)
+        if not (new or found.mixed or found.registry or found.missing) and args.all:
+            continue
+        print(f"{g.name}  (database entry: {found.manifest_name})")
+        for loc in new:
+            print(f"  + {_kind_word(loc.kind)}: {loc.path}")
+        for path in found.mixed:
+            print(f"  ? also holds saves, not added: {path}")
+        for key in found.registry:
+            print(f"  ! settings in the registry (not supported yet): {key}")
+        for path in found.missing:
+            print(f"  - not there yet (launch the game once): {path}")
+        if not new and not found.mixed:
+            print("  nothing new to add")
+        if args.add and new:
+            detect.add_detected(lib, g, found)
+            total_added += len(new)
+    if args.add:
+        store.save(lib)
+        print(f"Added {total_added} config location(s).")
+    elif any(detect.new_locations(g, f) for g in games if (f := detect.detect_game(g, man))):
+        print("Run again with --add to add the files marked +.")
     return 0

@@ -187,3 +187,134 @@ def test_detail_panel_shows_selected_game(env, qtbot):
     assert any(t.startswith("Saved ") for t in labels)
     assert any("Hades.exe" in t for t in labels)
     assert env.window.detail.locations.count() == 1
+
+
+# --- Phase 2: detection, locked setups, restore, startup check ------------------------
+
+MANIFEST_YAML = """
+Elden Ring:
+  files:
+    "<winAppData>/EldenRing/GraphicsConfig.xml":
+      tags: [config]
+  registry:
+    HKEY_CURRENT_USER/Software/FromSoftware:
+      tags: [config]
+Hades:
+  files:
+    "<winDocuments>/Saved Games/Hades":
+      tags: [config, save]
+"""
+
+
+@pytest.fixture
+def with_db(env, monkeypatch):
+    """Detection sees a Windows-style home; 'downloading' installs a small manifest."""
+    import json
+
+    from rigswap.core import detect, manifest
+
+    home = env.tmp / "home"
+    real = detect.context_for
+    monkeypatch.setattr(detect, "context_for", lambda game, **kw: real(
+        game, platform="win32", env={"APPDATA": str(home / "AppData" / "Roaming")},
+        home=home, documents=home / "Documents"))
+    yml = env.tmp / "m.yaml"
+    yml.write_text(MANIFEST_YAML)
+    downloads = []
+
+    def fake_download(then):
+        downloads.append(1)
+        index = manifest.build_index(manifest.parse_yaml(yml))
+        manifest.index_file(env.state.root).parent.mkdir(parents=True, exist_ok=True)
+        manifest.index_file(env.state.root).write_text(json.dumps(index))
+        env.state.manifest_downloaded()
+        then()
+
+    monkeypatch.setattr(env.window, "download_manifest", fake_download)
+    env.home, env.downloads = home, downloads
+    return env
+
+
+def test_find_automatically_downloads_then_adds(with_db):
+    e = with_db
+    gfx = e.home / "AppData" / "Roaming" / "EldenRing" / "GraphicsConfig.xml"
+    gfx.parent.mkdir(parents=True)
+    gfx.write_text("x")
+    game = e.state.add_game(Game(name="Elden Ring"))
+    e.prompts.answers = [True]  # yes, download the database
+    e.window.find_config(game)
+    assert e.downloads == [1] and e.state.lib.settings.use_manifest is True
+    assert [loc.path for loc in game.config_locations] == [str(gfx)]
+    kind, msg = e.prompts.messages[-1]
+    assert "Added" in msg and "registry" in msg
+    e.window.find_config(game)  # second time: no download, nothing new
+    assert e.downloads == [1] and "already added" in e.prompts.messages[-1][1]
+
+
+def test_mixed_folder_is_only_added_when_asked(with_db):
+    e = with_db
+    saves = e.home / "Documents" / "Saved Games" / "Hades"
+    saves.mkdir(parents=True)
+    game = e.state.add_game(Game(name="Hades"))
+    e.prompts.answers = [True, False]  # download yes; add the mixed folder: no
+    e.window.find_config(game)
+    assert game.config_locations == []
+
+    def patterns(dialog):
+        dialog.include.setText("Profile*.sav")
+        return True
+
+    e.window.run_dialog = patterns
+    e.prompts.answers = [True]  # add it this time
+    e.window.find_config(game)
+    loc = game.config_locations[0]
+    assert loc.kind == LocationKind.DIRECTORY and loc.include == ["Profile*.sav"]
+
+
+def test_declining_the_database_on_import_is_remembered(with_db, monkeypatch):
+    e = with_db
+    from rigswap.core import steam
+
+    games = [steam.SteamGame(1145360, "Hades", e.tmp / "lib" / "Hades", e.tmp / "lib",
+                             e.tmp / "Steam")]
+    monkeypatch.setattr(steam, "find_steam_installs", lambda: [steam.SteamInstall(e.tmp)])
+    monkeypatch.setattr(steam, "discover_games", lambda installs: games)
+    e.prompts.answers = [False]  # no thanks
+    e.window.import_steam()
+    assert e.state.lib.settings.use_manifest is False and e.downloads == []
+    e.state.remove_game(e.state.lib.games[0])
+    e.prompts.answers = []  # would default to True if asked
+    e.window.import_steam()
+    assert e.downloads == []  # not asked again
+
+
+def test_locked_setup_drift_restore_and_startup_check(env):
+    hh = env.state.add_setup("Handheld")
+    game, cfg = make_game(env, content="720p")
+    env.state.save_snapshot(game, hh)
+    env.window.switch(hh)
+    env.window.set_locked(hh, True)
+    assert env.state.lib.setups[0].locked
+    cfg.write_text("changed by a game update")
+
+    env.window.select_game(game.id)
+    labels = [lbl.text() for lbl in env.window.detail.findChildren(QLabel)]
+    assert "Changed since saved" in labels and any("locked" in t for t in labels)
+    assert any(b.text() == "Restore saved" for b in env.window.detail.findChildren(QPushButton))
+
+    env.prompts.answers = [False]
+    env.window.startup_check()  # user says not now
+    assert cfg.read_text() == "changed by a game update"
+    env.window.startup_check()  # default answer: yes
+    assert cfg.read_text() == "720p"
+    env.window.undo()
+    assert cfg.read_text() == "changed by a game update"
+    env.window.restore(game, hh)
+    assert cfg.read_text() == "720p"
+
+    env.window.set_locked(hh, False)
+    cfg.write_text("tweaked")
+    called = []
+    env.window.ask = lambda *a: called.append(a) or True
+    env.window.startup_check()  # unlocked: drift is expected, no prompt
+    assert called == []

@@ -28,6 +28,7 @@ RigSwap saves each game's settings once for each setup. Pick a setup and every g
 
 - **Setups, not per-game profiles.** Define setups such as `Handheld`, `eGPU Dock` and `Laptop on Battery` once. Each game keeps one saved config per setup, and switching applies all of them together.
 - **Keeps your tweaks.** When you switch away from a setup, the settings you're using are saved back into it, so changes you made while docked are still there next time you dock.
+- **Finds config files for you.** RigSwap looks each game up in the [Ludusavi manifest](https://github.com/mtkennerly/ludusavi-manifest), built from [PCGamingWiki](https://www.pcgamingwiki.com/), which lists where more than 12,000 games keep their settings, including inside Proton prefixes. Folders that also hold saves are only suggested, never added automatically.
 - **Finds your Steam library.** It finds every Steam library on Windows and Linux, including Flatpak Steam, and games running under Proton along with their prefix folders. Posters come from Steam's local artwork cache, or from the custom art you set in Steam.
 - **Works with any game.** Add games from other launchers by hand. A config can be a single file, several files or a whole folder.
 - **Safe swapping:**
@@ -36,6 +37,7 @@ RigSwap saves each game's settings once for each setup. Pick a setup and every g
   - Writes atomically, so an interrupted switch can't leave a half-written config.
   - If anything fails partway through, everything is rolled back.
   - **Undo** puts back the configs from before the last switch.
+- **Locked setups and change checks.** Lock a setup so switching away never saves over it. RigSwap shows when a game's settings changed since they were saved (a game update or cloud sync can do that) and can put the saved copy back.
 - **Protects your saves.** Some games keep save files in their config folder. Include and exclude patterns keep saves out of the snapshots, and switching never deletes files.
 - **Desktop app and command line.** Everything in the app also works from the `rigswap` command, which is handy for scripts and for gaming modes without a desktop.
 
@@ -69,7 +71,7 @@ Once the app is open:
 
 1. **Add your setups** with the **+** button, for example `Handheld` and `eGPU Dock`.
 2. **Add games** with **Import Steam games**, or **Add game…** for anything else.
-3. **Tell it where each game keeps its settings** with **Add file…** or **Add folder…** in the details panel. [PCGamingWiki](https://www.pcgamingwiki.com/) lists the location for most games. Automatic detection is coming (see [Roadmap](#roadmap)).
+3. **Let it find each game's settings.** Imported Steam games are matched automatically (RigSwap asks once before downloading the game database). For other games, click **Find automatically** in the details panel, or use **Add file…** or **Add folder…**.
 4. **Save each setup.** Set the game up for one setup, then click **Save current** next to that setup. Repeat for the next one.
 5. **Switch.** Click a setup at the top and every game is updated.
 
@@ -77,12 +79,15 @@ Once the app is open:
 
 ```bash
 rigswap setup add "Handheld"
-rigswap steam --import                                   # add installed Steam games
-rigswap game add "Elden Ring" --exe eldenring.exe        # or add any game by hand
+rigswap manifest update                               # download the game config database (once)
+rigswap steam --import                                # add installed Steam games and find their configs
+rigswap game add "Elden Ring" --exe eldenring.exe     # or add any game by hand
 rigswap config add "Elden Ring" "%APPDATA%\EldenRing" --include "*.xml"
-rigswap save "Handheld" "Elden Ring"                     # save the current settings for a setup
-rigswap switch "eGPU Dock"                               # apply every game's eGPU Dock settings
-rigswap undo                                             # put back the configs from before the last switch
+rigswap save "Handheld" "Elden Ring"                  # save the current settings for a setup
+rigswap switch "eGPU Dock"                            # apply every game's eGPU Dock settings
+rigswap undo                                          # put back the configs from before the last switch
+rigswap detect --all --add                            # find config files for every game
+rigswap status                                        # which games changed since they were saved
 ```
 
 Run `rigswap --help` for the full list of commands.
@@ -100,7 +105,7 @@ Set `RIGSWAP_DATA_DIR` to use a different folder.
 
 - [x] **Phase 0:** Foundation: data model, storage, tests, CI on Windows and Linux
 - [x] **Phase 1:** Manual switching: Steam discovery, safe swapping, desktop app
-- [ ] **Phase 2:** Automatic config detection using the [Ludusavi manifest](https://github.com/mtkennerly/ludusavi-manifest)
+- [x] **Phase 2:** Automatic config detection using the [Ludusavi manifest](https://github.com/mtkennerly/ludusavi-manifest), locked setups and change checks
 - [ ] **Phase 3:** Automatic switching when an eGPU is connected or disconnected, or on power and display changes
 - [ ] **Phase 4:** More launchers (Heroic, Lutris, GOG, Epic) and settings stored in the Windows registry
 - [ ] **Phase 5:** Installers (Windows installer, AppImage, Flatpak)
@@ -129,7 +134,7 @@ The original v0.1 (PyQt5) is kept on the [`legacy`](https://github.com/QPfixxy/R
 
 ## Related projects
 
-- [Ludusavi](https://github.com/mtkennerly/ludusavi): game save backup. Its manifest will power automatic config detection.
+- [Ludusavi](https://github.com/mtkennerly/ludusavi): game save backup. Its [manifest](https://github.com/mtkennerly/ludusavi-manifest), compiled from [PCGamingWiki](https://www.pcgamingwiki.com/), powers RigSwap's config detection. Missing or wrong paths can be fixed on PCGamingWiki and flow back to everyone.
 - [GPUPrefSwitcher](https://github.com/sharpjd/GPUPrefSwitcher) and [Thunderbolt Switch](https://github.com/Valkirie/Thunderbolt-Switch): Windows tools that cover parts of the same problem.
 
 ## License

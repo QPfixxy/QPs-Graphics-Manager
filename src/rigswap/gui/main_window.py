@@ -3,9 +3,20 @@
 from __future__ import annotations
 
 import html
+import os
 from pathlib import Path
 
-from PySide6.QtCore import QModelIndex, QRect, QSize, QSortFilterProxyModel, Qt
+from PySide6.QtCore import (
+    QEvent,
+    QModelIndex,
+    QRect,
+    QSize,
+    QSortFilterProxyModel,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -109,6 +120,9 @@ def game_status(state: AppState, game: Game) -> tuple[str, str]:
     states = [state.snapshot_state(game, s)[0] for s in state.lib.setups]
     if not states:
         return "No setups yet", "none"
+    active = state.active_setup()
+    if active is not None and active.locked and state.changed_files(game, active):
+        return "Changed since saved", "warn"
     stale = states.count(SnapState.STALE)
     saved = states.count(SnapState.SAVED)
     if stale:
@@ -304,37 +318,67 @@ class DetailPanel(QWidget):
         # Setups
         setups_box = QGroupBox("Setups")
         grid = QGridLayout(setups_box)
-        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(0, 1)
+        grid.setVerticalSpacing(12)
         if not state.lib.setups:
-            grid.addWidget(_hint("Add a setup at the top first, e.g. Handheld."), 0, 0, 1, 3)
+            grid.addWidget(_hint("Add a setup at the top first, e.g. Handheld."), 0, 0, 1, 2)
         active = state.lib.settings.active_setup_id
         for row, setup in enumerate(state.lib.setups):
             snap_state, saved_at = state.snapshot_state(game, setup)
-            name = QLabel(setup.name + ("  (active)" if setup.id == active else ""))
+            tags = [t for t, on in (("active", setup.id == active), ("locked", setup.locked)) if on]
+            name = QLabel(setup.name + (f"  ·  {' · '.join(tags)}" if tags else ""))
             if setup.id == active:
                 name.setObjectName("Strong")
-            if snap_state == SnapState.SAVED:
+            if setup.locked:
+                name.setToolTip("Locked: switching away never saves over this setup's configs")
+            changed = (snap_state == SnapState.SAVED and setup.id == active
+                       and bool(state.changed_files(game, setup)))
+            if changed:
+                status = _status("Changed since saved", "warn")
+                status.setToolTip("The current config files differ from the saved copy. "
+                                  + ("Restore saved puts the saved copy back."
+                                     if setup.locked else
+                                     f"They're saved into {setup.name} when you switch away."))
+            elif snap_state == SnapState.SAVED:
                 status = _status(f"Saved {saved_at.astimezone():%d %b, %H:%M}", "ok")
                 status.setToolTip(f"{saved_at.astimezone():%A %d %B %Y, %H:%M}")
             elif snap_state == SnapState.STALE:
                 status = _status("Out of date: config files changed", "warn")
             else:
                 status = _status("Not saved", "none")
+            buttons = QWidget()
+            brow = QHBoxLayout(buttons)
+            brow.setContentsMargins(0, 0, 0, 0)
+            if changed:
+                restore = QPushButton("Restore saved")
+                restore.setToolTip(f"Put {game.name}'s saved {setup.name} config back (undoable)")
+                restore.clicked.connect(lambda _=False, s=setup: self.window.restore(game, s))
+                brow.addWidget(restore)
             save = QPushButton("Save current")
             save.setToolTip(f"Copy {game.name}'s current config into {setup.name}")
             save.setEnabled(bool(game.config_locations))
             save.clicked.connect(lambda _=False, s=setup: self.window.save_snapshot(game, s))
-            grid.addWidget(name, row, 0)
-            grid.addWidget(status, row, 1)
-            grid.addWidget(save, row, 2)
+            brow.addWidget(save)
+            for b in buttons.findChildren(QPushButton):
+                b.setMinimumWidth(b.sizeHint().width())
+            info = QWidget()
+            col = QVBoxLayout(info)
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setSpacing(2)
+            name.setWordWrap(True)
+            status.setWordWrap(True)
+            col.addWidget(name)
+            col.addWidget(status)
+            grid.addWidget(info, row, 0)
+            grid.addWidget(buttons, row, 1, Qt.AlignmentFlag.AlignRight)
         self.layout_.addWidget(setups_box)
 
         # Config locations
         loc_box = QGroupBox("Config files and folders")
         v = QVBoxLayout(loc_box)
         if not game.config_locations:
-            v.addWidget(_hint("Add the file or folder where this game keeps its graphics "
-                              "settings. PCGamingWiki lists it for most games."))
+            v.addWidget(_hint("Use Find automatically, or add the file or folder where this game "
+                              "keeps its graphics settings."))
         self.locations = QListWidget()
         self.locations.setObjectName("Locations")
         self.locations.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -367,10 +411,19 @@ class DetailPanel(QWidget):
         patterns = QPushButton("Files…")
         patterns.setToolTip("Choose which files in a folder belong to the config")
         remove_loc = QPushButton("Remove")
-        for b in (add_file, add_dir, patterns, remove_loc):
+        find = QPushButton("Find automatically")
+        find.setObjectName("Primary")
+        find.setToolTip("Look this game up in the game config database")
+        find.clicked.connect(lambda: self.window.find_config(game))
+        for b in (find, add_file, add_dir):
             row.addWidget(b)
         row.addStretch()
         v.addLayout(row)
+        row2 = QHBoxLayout()
+        for b in (patterns, remove_loc):
+            row2.addWidget(b)
+        row2.addStretch()
+        v.addLayout(row2)
 
         def selected_index() -> int:
             return self.locations.currentRow() if self.locations else -1
@@ -424,6 +477,28 @@ def _status(text: str, kind: str, wrap: bool = False) -> QLabel:
     label.setStyleSheet(f"color: {STATUS_COLORS[kind].name()};")
     label.setWordWrap(wrap)
     return label
+
+
+# --- background download ---------------------------------------------------------------
+
+
+class ManifestWorker(QThread):
+    progress = Signal(int, int)
+    done = Signal(str)  # "" on success, else the error
+
+    def __init__(self, root: Path, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.root = root
+
+    def run(self) -> None:
+        from rigswap.core import manifest
+
+        try:
+            manifest.update(self.root, progress=lambda d, t: self.progress.emit(d, t or 0))
+        except Exception as e:  # reported in the window
+            self.done.emit(str(e) or type(e).__name__)
+        else:
+            self.done.emit("")
 
 
 # --- main window -------------------------------------------------------------------
@@ -515,6 +590,7 @@ class MainWindow(QMainWindow):
 
         state.changed.connect(self.refresh)
         self.refresh()
+        QTimer.singleShot(0, self.startup_check)
 
     # --- building ---------------------------------------------------------------
 
@@ -588,6 +664,12 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.grid if self.state.lib.games else self.empty)
         self.select_game(current)
 
+    def changeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        """Coming back from a game: config files may have changed, so refresh."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self.refresh()
+
     def select_game(self, game_id: str | None) -> None:
         if game_id:
             for row in range(self.proxy.rowCount()):
@@ -608,9 +690,12 @@ class MainWindow(QMainWindow):
         save_all.triggered.connect(lambda: self.save_all(setup))
         rename = QAction("Rename…", menu)
         rename.triggered.connect(lambda: self.rename_setup(setup))
+        lock = QAction("Unlock" if setup.locked else "Lock (never save over it when switching)",
+                       menu)
+        lock.triggered.connect(lambda: self.set_locked(setup, not setup.locked))
         remove = QAction("Remove…", menu)
         remove.triggered.connect(lambda: self.remove_setup(setup))
-        menu.addActions([save_all, rename, remove])
+        menu.addActions([save_all, lock, rename, remove])
         menu.exec(pos)
 
     # --- prompts (tests replace these) -----------------------------------------------
@@ -711,6 +796,136 @@ class MainWindow(QMainWindow):
             return
         self.statusBar().showMessage(f"Steam: {len(result.added)} new game(s), "
                                      f"{len(result.updated)} updated.", 8000)
+        if result.added:
+            new_ids = [g.id for g in result.added]
+            self.with_manifest(lambda: self._auto_detect(new_ids), asked_by_user=False)
+
+    def _auto_detect(self, game_ids: list[str]) -> None:
+        games = [g for g in self.state.lib.games if g.id in game_ids]
+        ok, added = self._try("Find config files", lambda: self.state.auto_detect(games))
+        if ok:
+            n = sum(1 for v in added.values() if v)
+            self.statusBar().showMessage(
+                f"Found config files for {n} of {len(games)} new game(s). Games without them "
+                "need Find automatically or Add file…", 10000)
+
+    # --- the game config database ------------------------------------------------------
+
+    def with_manifest(self, then, *, asked_by_user: bool) -> None:
+        """Run `then` once the manifest is available, downloading it first if needed."""
+        use = self.state.lib.settings.use_manifest
+        if self.state.manifest() is not None and use is not False:
+            then()
+            return
+        if use is False and not asked_by_user:
+            return
+        if not self.ask("Find config files automatically",
+                        "RigSwap can download a free, community-maintained database of "
+                        "where games keep their settings (about 17 MB, refreshed when it "
+                        "changes).\n\nDownload it now?"):
+            if use is None:
+                self._try("Settings", lambda: self.state.set_use_manifest(False))
+            return
+        if use is not True:
+            self._try("Settings", lambda: self.state.set_use_manifest(True))
+        self.download_manifest(then)
+
+    def download_manifest(self, then) -> None:
+        """Download in the background; tests replace this."""
+        if getattr(self, "_manifest_worker", None) is not None:
+            return
+        worker = ManifestWorker(self.state.root, self)
+        self._manifest_worker = worker
+
+        def progress(done: int, total: int) -> None:
+            pct = f" {done * 100 // total}%" if total else ""
+            self.statusBar().showMessage(f"Downloading the game config database…{pct}")
+
+        def finished(error: str) -> None:
+            self._manifest_worker = None
+            if error:
+                self.warn("Game config database", f"Couldn't download it: {error}")
+                return
+            self.state.manifest_downloaded()
+            self.statusBar().showMessage("Game config database ready.", 6000)
+            then()
+
+        worker.progress.connect(progress)
+        worker.done.connect(finished)
+        worker.start()
+
+    def find_config(self, game: Game) -> None:
+        self.with_manifest(lambda: self._find_config(game.id), asked_by_user=True)
+
+    def _find_config(self, game_id: str) -> None:
+        try:
+            game = self.state.lib.game(game_id)
+        except LibraryError:
+            return
+        found = self.state.detect(game)
+        title = f"{game.name}: config files"
+        if found is None:
+            self.inform(title, f"{game.name} isn't in the game config database. Add its "
+                        "config file or folder by hand.")
+            return
+        from rigswap.core import detect as detect_mod
+
+        new = detect_mod.new_locations(game, found)
+        if new:
+            self._try(title, lambda: self.state.add_locations(game, new))
+        lines = []
+        if new:
+            lines.append("Added:\n" + "\n".join(f"• {_short(loc.path)}" for loc in new))
+        elif found.found:
+            lines.append("Everything the database lists is already added.")
+        if found.missing:
+            lines.append("Not there yet (launch the game once, then try again):\n"
+                         + "\n".join(f"• {_short(p)}" for p in found.missing))
+        if found.registry:
+            lines.append("Some settings are kept in the Windows registry, which RigSwap "
+                         "can't swap yet:\n" + "\n".join(f"• {k}" for k in found.registry))
+        if not lines and not found.mixed:
+            lines.append("The database has no config files for this game on this system.")
+        if lines:
+            self.inform(title, "\n\n".join(lines))
+        for path in found.mixed:
+            if any(os.path.normcase(loc.path) == os.path.normcase(path)
+                   for loc in game.config_locations):
+                continue
+            if self.ask(title, f"This folder holds settings and saves together:\n\n"
+                        f"{_short(path)}\n\nAdd it anyway? You'll choose which files count, "
+                        "so saves can be left out."):
+                loc = ConfigLocation(path, LocationKind.DIRECTORY)
+                if self._try(title, lambda loc=loc: self.state.add_locations(game, [loc]))[0]:
+                    self.edit_patterns(game, len(game.config_locations) - 1)
+
+    # --- locked setups, restore, startup check --------------------------------------
+
+    def set_locked(self, setup: Setup, locked: bool) -> None:
+        if self._try("Lock setup", lambda: self.state.set_locked(setup, locked))[0]:
+            self.statusBar().showMessage(
+                f"{setup.name} is locked: switching away won't save over it." if locked
+                else f"{setup.name} is unlocked.", 6000)
+
+    def restore(self, game: Game, setup: Setup) -> None:
+        if not self.ask("Restore saved config",
+                        f"Put {game.name}'s saved {setup.name} config back? Its current files "
+                        "are backed up, and Undo reverses this."):
+            return
+        if self._try("Restore saved config", lambda: self.state.restore([game], setup))[0]:
+            self.statusBar().showMessage(f"Restored {game.name}'s {setup.name} config.", 6000)
+
+    def startup_check(self) -> None:
+        setup, games = self.state.locked_drift()
+        if not games:
+            return
+        names = "\n".join(f"• {g.name}" for g in games)
+        if self.ask("Configs changed",
+                    f"{setup.name} is locked, but these games' config files changed while "
+                    f"RigSwap was closed (a game update or cloud sync can do this):\n\n"
+                    f"{names}\n\nPut the saved {setup.name} configs back? "
+                    "Undo reverses this."):
+            self._try("Restore saved configs", lambda: self.state.restore(games, setup))
 
     def add_game(self) -> None:
         dialog = GameDialog(self)
