@@ -148,7 +148,7 @@ def test_detect_cli(run, fake_windows_home, monkeypatch):
     hades = fake_windows_home / "Documents" / "Saved Games" / "Hades"
     hades.mkdir(parents=True)
     code, out = run("detect", "--all")
-    assert code == 1 and "manifest update" in out
+    assert code == 0 and "Using engine rules only" in out  # works without the database
     run.install_manifest()
     run("game", "add", "Elden Ring")
     run("game", "add", "Hades")
@@ -162,7 +162,7 @@ def test_detect_cli(run, fake_windows_home, monkeypatch):
     code, out = run("detect", "Hades", "--add")
     assert "Added 0" in out  # the mixed folder is never added automatically
     run("game", "add", "Unknown Indie")
-    assert "not in the database" in run("detect", "Unknown Indie")[1]
+    assert "its engine isn't recognised" in run("detect", "Unknown Indie")[1]
 
 
 def test_steam_import_detects_when_manifest_cached(run, monkeypatch, tmp_path, fake_windows_home):

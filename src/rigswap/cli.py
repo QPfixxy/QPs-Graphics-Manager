@@ -644,9 +644,10 @@ def _detect(args) -> int:
     from rigswap.core import detect, manifest
 
     store, lib = _open()
-    man = manifest.load(store.root)
+    man = manifest.load(store.root) if lib.settings.use_manifest is not False else None
     if man is None:
-        raise CliError("the game database isn't downloaded yet; run: rigswap manifest update")
+        print("Using engine rules only (the game config database isn't downloaded; "
+              "'rigswap manifest update' gets it).")
     if args.all == bool(args.game):
         raise CliError("name one game, or use --all")
     games = sorted(lib.games, key=lambda g: g.name.casefold()) if args.all \
@@ -656,13 +657,14 @@ def _detect(args) -> int:
         found = detect.detect_game(g, man)
         if found is None:
             if not args.all:
-                print(f"{g.name}: not in the database. Add its config files by hand.")
+                print(f"{g.name}: not in the game config database, and its engine isn't "
+                      "recognised. Add its config files by hand.")
             continue
         new = detect.new_locations(g, found)
         if not (new or found.mixed or found.mixed_registry or found.registry
-                or found.missing) and args.all:
+                or found.missing or found.notes) and args.all:
             continue
-        print(f"{g.name}  (database entry: {found.manifest_name})")
+        print(f"{g.name}  ({detect.sources(found)})")
         for loc in new:
             print(f"  + {_kind_word(loc.kind)}: {loc.path}")
         for path in [*found.mixed, *found.mixed_registry]:
@@ -672,6 +674,8 @@ def _detect(args) -> int:
                   f"{key}")
         for path in found.missing:
             print(f"  - not there yet (launch the game once): {path}")
+        for note in found.notes:
+            print(f"  note: {note}")
         if not new and not found.mixed and not found.mixed_registry:
             print("  nothing new to add")
         if args.add and new:
@@ -829,15 +833,14 @@ def _import(args) -> int:
 
 
 def _detect_new(store, lib, added) -> None:
-    if lib.settings.use_manifest is False or not added:
+    if not added:
         return
     from rigswap.core import detect, manifest
 
-    man = manifest.load(store.root)
-    if man is None:
-        print("Tip: run 'rigswap manifest update' once, and RigSwap will find most "
-              "games' config files for you.")
-        return
+    man = manifest.load(store.root) if lib.settings.use_manifest is not False else None
+    if man is None and lib.settings.use_manifest is not False:
+        print("Tip: 'rigswap manifest update' downloads the game config database, so RigSwap "
+              "finds config files for many more games.")
     n = 0
     for g in added:
         found = detect.detect_game(g, man)

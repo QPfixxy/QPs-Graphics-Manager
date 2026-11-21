@@ -423,6 +423,8 @@ class DetailPanel(QWidget):
         self.layout_.setContentsMargins(16, 16, 16, 16)
         self.layout_.setSpacing(12)
         self._outer.addWidget(self._content)
+        # Show it now rather than on Qt's next pass, so there's no empty frame
+        self._content.show()
         self.locations = None
 
     def show_game(self, game_id: str | None) -> None:
@@ -843,6 +845,7 @@ class MainWindow(QMainWindow):
             b.customContextMenuRequested.connect(
                 lambda pos, s=setup, btn=b: self._setup_menu(s, btn.mapToGlobal(pos)))
             self.setup_row.addWidget(b)
+            b.show()
         self.undo_button.setEnabled(self.state.can_undo())
         self._sync_auto()
 
@@ -1033,19 +1036,25 @@ class MainWindow(QMainWindow):
     # --- the game config database ------------------------------------------------------
 
     def with_manifest(self, then, *, asked_by_user: bool) -> None:
-        """Run `then` once the manifest is available, downloading it first if needed."""
+        """Run `then` with the game database if it's wanted, downloading it first if needed.
+
+        Without it, `then` still runs: engine rules find many games' settings on their own.
+        """
         use = self.state.lib.settings.use_manifest
         if self.state.manifest() is not None and use is not False:
             then()
             return
         if use is False and not asked_by_user:
+            then()
             return
         if not self.ask("Find config files automatically",
                         "RigSwap can download a free, community-maintained database of "
                         "where games keep their settings (about 17 MB, refreshed when it "
-                        "changes).\n\nDownload it now?"):
+                        "changes). Without it, RigSwap still recognises Unreal, Unity and "
+                        "Source games by itself.\n\nDownload it now?"):
             if use is None:
                 self._try("Settings", lambda: self.state.set_use_manifest(False))
+            then()
             return
         if use is not True:
             self._try("Settings", lambda: self.state.set_use_manifest(True))
@@ -1086,8 +1095,10 @@ class MainWindow(QMainWindow):
         found = self.state.detect(game)
         title = f"{game.name}: config files"
         if found is None:
-            self.inform(title, f"{game.name} isn't in the game config database. Add its "
-                        "config file or folder by hand.")
+            where = ("isn't in the game config database, and " if self.state.usable_manifest()
+                     else "")
+            self.inform(title, f"{game.name} {where}doesn't use an engine RigSwap recognises. "
+                        "Add its config file or folder by hand.")
             return
         from rigswap.core import detect as detect_mod
 
@@ -1098,10 +1109,12 @@ class MainWindow(QMainWindow):
         if new:
             lines.append("Added:\n" + "\n".join(f"• {_short(loc.path)}" for loc in new))
         elif found.found:
-            lines.append("Everything the database lists is already added.")
+            lines.append("Everything RigSwap found is already added.")
         if found.missing:
             lines.append("Not there yet (launch the game once, then try again):\n"
                          + "\n".join(f"• {_short(p)}" for p in found.missing))
+        if found.notes:
+            lines.extend(found.notes)
         if found.registry:
             lines.append("Some settings are kept in the Windows registry, which can't be "
                          "swapped on this computer:\n"
@@ -1109,7 +1122,8 @@ class MainWindow(QMainWindow):
         if not lines and not found.mixed and not found.mixed_registry:
             lines.append("The database has no config files for this game on this system.")
         if lines:
-            self.inform(title, "\n\n".join(lines))
+            via = detect_mod.sources(found)
+            self.inform(title, (f"Found using {via}.\n\n" if via else "") + "\n\n".join(lines))
         for path in found.mixed:
             if any(os.path.normcase(loc.path) == os.path.normcase(path)
                    for loc in game.config_locations):

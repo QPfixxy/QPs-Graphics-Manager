@@ -187,9 +187,12 @@ class AppState(QObject):
         with self._change():
             self.lib.settings.use_manifest = value
 
+    def usable_manifest(self):
+        return self.manifest() if self.lib.settings.use_manifest is not False else None
+
     def detect(self, game: Game) -> detect.Detection | None:
-        man = self.manifest()
-        return detect.detect_game(game, man) if man else None
+        """The game database (if enabled and downloaded), then engine rules."""
+        return detect.detect_game(game, self.usable_manifest())
 
     def add_locations(self, game: Game, locations: list[ConfigLocation]) -> None:
         with self._change():
@@ -198,10 +201,8 @@ class AppState(QObject):
 
     def auto_detect(self, games: list[Game]) -> dict[str, int]:
         """Add safe config locations for each game; returns {game id: number added}."""
-        man = self.manifest()
+        man = self.usable_manifest()
         added: dict[str, int] = {}
-        if man is None:
-            return added
         with self._change():
             for game in games:
                 found = detect.detect_game(game, man)

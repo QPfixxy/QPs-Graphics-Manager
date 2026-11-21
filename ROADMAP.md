@@ -85,13 +85,14 @@ The headless daemon matters for Bazzite and SteamOS-style Game Mode (gamescope),
 - [x] One "Import games" step for every launcher, with a checklist and no duplicates
 - [x] Registry-stored settings (common in Unity games): the Windows registry (read and written value by value, keeping each value's type) and the `user.reg`/`system.reg` files inside Proton and Wine prefixes (only the changed lines are rewritten, and never while the prefix's wineserver is running); include/exclude patterns keep saves out; backups, rollback and undo as for files
 - [ ] RigSwap's own config detection, so it works fully without the game config database:
-  - [ ] Engine rules: recognise a game's engine from its install folder, then check that engine's standard config locations:
-    - [ ] Unreal Engine: `Saved/Config/<Windows|WindowsNoEditor|Linux>/GameUserSettings.ini` (and its other `.ini` files) under the game's AppData or Documents folder
-    - [ ] Unity: player preferences in the registry (`HKCU\Software\<Company>\<Game>`) on Windows, and `~/.config/unity3d/<Company>/<Game>/prefs` on Linux
-    - [ ] Source engine: `cfg/video.txt` and `cfg/videodefaults.txt` in the install folder
+  - [x] Engine rules: recognise a game's engine from its install folder, then check that engine's standard config locations:
+    - [x] Unreal Engine: `Saved/Config/<Windows|WindowsNoEditor|WinGDK|Linux>/` under the game's AppData, Documents\My Games or install folder (GameUserSettings.ini, Engine.ini, Scalability.ini only)
+    - [x] Unity: player preferences in the registry (`HKCU\Software\<Company>\<Game>`, names from `<Game>_Data/app.info`) on Windows and in Wine prefixes, limited to Unity's own display values; native Linux `prefs` holds saves too, so it's explained rather than added
+    - [x] Source engine: `<mod>/cfg/video.txt` in the install folder
   - [ ] Learn mode, for any game nothing else recognises: RigSwap snapshots the usual config places (AppData, LocalLow, Documents, the Proton prefix and, on Windows, the registry), you change one graphics setting in the game, and RigSwap shows which files or keys changed so you can add them in one click
-  - [ ] Detection order: game config database (if enabled) → engine rules → Learn mode → add by hand. Learn mode's results can also confirm or correct what the database says
-  - [ ] The game config database stays optional: everything works with it turned off
+  - [x] Detection order: game config database (if enabled) → engine rules → Learn mode → add by hand; results are merged without duplicates
+  - [ ] Learn mode's results confirm or correct what the database says
+  - [x] The game config database stays optional: detection keeps working with it turned off
 
 ### Phase 5: Distribution
 - [ ] Windows: PyInstaller build plus an installer

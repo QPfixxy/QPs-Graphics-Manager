@@ -23,7 +23,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from rigswap.core import registry
+from rigswap.core import engines, registry
 from rigswap.core.manifest import Manifest, ManifestGame
 from rigswap.core.models import ConfigLocation, Game, Library, LocationKind
 
@@ -43,7 +43,7 @@ class Context:
 
 @dataclass
 class Detection:
-    manifest_name: str
+    manifest_name: str | None
     found: list[ConfigLocation] = field(default_factory=list)
     # tagged config AND save: folders that also hold saves
     mixed: list[str] = field(default_factory=list)
@@ -53,6 +53,8 @@ class Detection:
     registry: list[str] = field(default_factory=list)
     # config paths that apply here but don't exist yet (e.g. game never launched)
     missing: list[str] = field(default_factory=list)
+    engine: str | None = None  # recognised engine, when engine rules contributed
+    notes: list[str] = field(default_factory=list)
 
 
 # --- contexts -----------------------------------------------------------------------
@@ -304,13 +306,34 @@ def new_locations(game: Game, detection: Detection) -> list[ConfigLocation]:
     return out
 
 
-def detect_game(game: Game, man: Manifest, ctx: Context | None = None) -> Detection | None:
-    """Detect a game's config files, or None if the manifest doesn't know the game."""
+def detect_game(game: Game, man: Manifest | None,
+                ctx: Context | None = None) -> Detection | None:
+    """Detect a game's config files: the game database (if any), then engine rules.
+
+    None if neither knows anything about the game.
+    """
+    ctx = ctx or context_for(game)
+    backend = registry_backend(game)
     entry = man.find(steam_app_id=game.steam_app_id, name=game.name,
-                     install_dir=game.install_dir)
-    if entry is None:
-        return None
-    return detect(game, entry, ctx or context_for(game), registry_backend(game))
+                     install_dir=game.install_dir) if man is not None else None
+    result = detect(game, entry, ctx, backend) if entry is not None else None
+    info = engines.identify(game.install_dir)
+    if info is None:
+        return result
+    by_engine = engines.locations(game, info, ctx.values, ctx.os_name, backend)
+    if result is None:
+        result = Detection(manifest_name=None)
+    result.engine = info.engine
+    have = {_key(loc) for loc in result.found}
+    for loc in by_engine.found:
+        if _key(loc) not in have:
+            result.found.append(loc)
+            have.add(_key(loc))
+    if not result.found:
+        result.missing.extend(m for m in by_engine.missing if m not in result.missing)
+    result.notes.extend(by_engine.notes)
+    result.found = _drop_nested(result.found)
+    return result
 
 
 def registry_backend(game: Game):
@@ -328,3 +351,13 @@ def add_detected(lib: Library, game: Game, detection: Detection) -> list[ConfigL
         lib.add_config_location(game.id, loc)
         added.append(loc)
     return added
+
+
+def sources(d: Detection) -> str:
+    """'game database', 'Unreal Engine rules', or both."""
+    parts = []
+    if d.manifest_name:
+        parts.append(f"game database: {d.manifest_name}")
+    if d.engine:
+        parts.append(f"{d.engine} rules")
+    return ", ".join(parts)
